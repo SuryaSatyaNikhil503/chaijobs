@@ -39,11 +39,13 @@ export function minYearsFromText(text: string): number | null {
   return min;
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function titleHit(title: string, words: string[]): string | null {
   const t = title.toLowerCase();
-  return words.find((w) => new RegExp(`(?<![a-z0-9])${escape(w.toLowerCase())}(?![a-z0-9])`).test(t)) ?? null;
+  return (
+    words.find((w) => new RegExp(`(?<![a-z0-9])${escapeRegex(w.toLowerCase())}(?![a-z0-9])`).test(t)) ?? null
+  );
 }
 
 /** Rules that need no LLM. Returns a skip verdict, or null when the job survives to the next stage. */
