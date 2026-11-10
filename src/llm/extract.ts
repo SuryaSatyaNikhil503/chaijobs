@@ -38,7 +38,7 @@ niceToHave: skills marked "good to have", "plus", "preferred", "bonus".
 Use short canonical names (e.g. "Java", "Spring Boot", "PostgreSQL", "AWS").
 applyEmail: an email address the JD asks candidates to send applications to, else null.`;
 
-function parseFacts(text: string): JdFacts | null {
+export function parseFacts(text: string): JdFacts | null {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -75,6 +75,13 @@ export function groundFacts(facts: JdFacts, text: string): JdFacts {
   };
 }
 
+export function buildMessages(text: string): ChatMessage[] {
+  return [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: text.slice(0, 24_000) },
+  ];
+}
+
 /** Tries each configured provider in order; 429/5xx/network errors fall through, invalid output retries once. */
 export async function extractJdFacts(
   text: string,
@@ -88,10 +95,7 @@ export async function extractJdFacts(
   if (configured.length === 0) return { ok: false, reason: "no-providers" };
   const usable = configured.filter((p) => !blocked.has(p.name));
   if (usable.length === 0) return { ok: false, reason: "all-quota" };
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: text.slice(0, 24_000) },
-  ];
+  const messages = buildMessages(text);
   let sawInvalid = false;
   for (const p of usable) {
     const key = env[p.apiKeyEnv] as string;

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
 import { initInstance, resolveReleaseRef } from "./commands/init.js";
+import { checkProviders } from "./commands/providers.js";
 import { verifyCompanies } from "./commands/verifyCompanies.js";
 import { loadConfig } from "./config/load.js";
 import { defaultDeps, runCycle } from "./pipeline/run.js";
@@ -52,6 +53,19 @@ program
     const results = await verifyCompanies(companies, defaultDeps.fetchCompany);
     for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.company}  ${r.detail}`);
     if (results.some((r) => !r.ok)) process.exitCode = 1;
+  });
+
+program
+  .command("providers")
+  .description("AI provider tools")
+  .command("check")
+  .description("Send one synthetic job description to each configured AI provider and report the result")
+  .requiredOption("--instance <dir>", "path to your instance folder")
+  .action(async (opts: { instance: string }) => {
+    const { providers } = loadConfig(resolve(opts.instance));
+    const results = await checkProviders(providers, process.env);
+    for (const r of results) console.log(`${r.status.padEnd(7)} ${r.provider} (${r.model})  ${r.detail}`);
+    if (!results.some((r) => r.status === "ok")) process.exitCode = 1;
   });
 
 await program.parseAsync();

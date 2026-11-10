@@ -201,6 +201,30 @@ describe("runCycle", () => {
     expect(loadState(dir).imapMaxUid).toBe(42);
   });
 
+  it("alert jobs beyond the cap roll over to the next digest", async () => {
+    const dir = instance();
+    const stubs = Array.from({ length: 30 }, (_, i) =>
+      raw(200 + i, {
+        source: "alert-naukri",
+        url: `https://www.naukri.com/jd/job-listings-x-${900000000000 + i}`,
+        descriptionText: null,
+        postedAt: now.toISOString(),
+        postedAtKind: "email-received",
+      }),
+    );
+    const fetchAlerts = async () => ({ jobs: stubs, maxUid: 1 });
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: deps({ fetchAlerts }).d });
+    const second = deps({ fetchAlerts });
+    await runCycle({
+      instanceDir: dir,
+      now: new Date(now.getTime() + 3_600_000),
+      env,
+      dryRun: false,
+      deps: second.d,
+    });
+    expect(second.sent[0]?.subject).toContain("5 from alerts");
+  });
+
   it("one source throws: others still processed and health shows error", async () => {
     const { d, sent } = deps({
       fetchCompany: async (c) => {

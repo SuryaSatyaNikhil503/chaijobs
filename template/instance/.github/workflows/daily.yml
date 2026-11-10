@@ -10,6 +10,12 @@ on:
   schedule:
     - cron: "37 1 * * *" # 01:37 UTC = 07:07 IST (off the top of the hour, when GitHub is busiest)
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "digest = normal run; check-providers = test your AI keys with a synthetic job description"
+        type: choice
+        options: [digest, check-providers]
+        default: digest
 
 permissions:
   contents: write # the last step commits data/ back to this repo
@@ -46,7 +52,15 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run build
 
+      - name: Check AI providers
+        if: inputs.mode == 'check-providers'
+        env: # LLM keys only: this step never needs the Gmail password
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node .chaijobs-app/dist/cli.js providers check --instance .
+
       - name: Run chaijobs
+        if: inputs.mode != 'check-providers'
         env:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}

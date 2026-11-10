@@ -19,6 +19,7 @@ export interface RenderedDigest {
 }
 
 export const MAX_MATCHES = 25;
+export const MAX_STUBS = 25;
 
 const esc = (s: string) =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -54,7 +55,8 @@ const where = (job: Job) =>
 
 export function renderDigest(d: DigestInput): RenderedDigest {
   const n = d.matches.length;
-  const subject = `☕ chaijobs · ${n} new match${n === 1 ? "" : "es"} · ${dayLabel(d.date)}`;
+  const alerts = d.stubs.length ? ` · ${d.stubs.length} from alerts` : "";
+  const subject = `☕ chaijobs · ${n} new match${n === 1 ? "" : "es"}${alerts} · ${dayLabel(d.date)}`;
   const shown = d.matches.slice(0, MAX_MATCHES);
   const more = n - shown.length;
   const health = [...d.health].sort((a, b) => Number(a.ok) - Number(b.ok));
@@ -108,13 +110,19 @@ export function renderDigest(d: DigestInput): RenderedDigest {
   if (d.stubs.length) {
     text.push("", "Needs full JD (open the link to read it)");
     html.push(`<h3 style="margin:16px 0 6px">Needs full JD (open the link to read it)</h3>`);
-    for (const job of d.stubs) {
+    for (const job of d.stubs.slice(0, MAX_STUBS)) {
       text.push(
         `• ${job.title} @ ${job.company} | ${where(job)}`,
         `  ${safeUrl(job.url) ?? "(link withheld: not http)"}`,
       );
       html.push(`<div>${link(job.url, job.title, "color:#1d4ed8")} · ${esc(job.company)}</div>`);
     }
+  }
+
+  if (d.stubs.length > MAX_STUBS) {
+    const extra = d.stubs.length - MAX_STUBS;
+    text.push(`…and ${extra} more`);
+    html.push(`<p>…and ${extra} more</p>`);
   }
 
   if (skipped.length) {

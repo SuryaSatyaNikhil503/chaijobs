@@ -45,6 +45,21 @@ describe("renderDigest", () => {
     expect(d.text).toContain("greenhouse:groww");
   });
 
+  it("subject counts alert jobs so a stub-only day does not read as empty", () => {
+    const d = renderDigest({
+      ...base,
+      stubs: [job(7, { descriptionText: null }), job(8, { descriptionText: null })],
+    });
+    expect(d.subject).toBe("☕ chaijobs · 0 new matches · 2 from alerts · 11 Nov");
+  });
+
+  it("caps the needs-full-JD section at 25 with and-N-more", () => {
+    const stubs = Array.from({ length: 30 }, (_, i) => job(100 + i, { descriptionText: null }));
+    const d = renderDigest({ ...base, stubs });
+    expect(d.text).toContain("and 5 more");
+    expect(d.text).not.toContain("Backend Engineer 129");
+  });
+
   it("lists a match with posted age, matched and missing skills", () => {
     const d = renderDigest({ ...base, matches: [{ job: job(1), verdict: match() }] });
     expect(d.subject).toContain("1 new match ");

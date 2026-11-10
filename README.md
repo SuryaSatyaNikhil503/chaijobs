@@ -51,6 +51,10 @@ After that the digest arrives every morning at about 07:07 IST.
 movable tag. To upgrade later, run `npx --yes github:SuryaSatyaNikhil503/chaijobs#<new-tag> init new-folder`
 and copy the new `ref:` line into your `daily.yml`. Or edit the `ref:` line yourself after reviewing the changes.
 
+To test your AI keys without touching your inbox: Actions > chaijobs-daily > **Run workflow** >
+mode **check-providers**. It sends one made-up job description to each configured provider and reports
+`ok`, `failed` or `no key` for each.
+
 Try it without sending anything:
 
 ```bash

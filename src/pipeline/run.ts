@@ -1,7 +1,13 @@
 import { loadConfig } from "../config/load.js";
 import type { Company, Config } from "../config/schema.js";
 import type { Job, MatchVerdict, RawJob, RuleId, Verdict } from "../core/types.js";
-import { type DigestInput, MAX_MATCHES, type RenderedDigest, renderDigest } from "../digest/render.js";
+import {
+  type DigestInput,
+  MAX_MATCHES,
+  MAX_STUBS,
+  type RenderedDigest,
+  renderDigest,
+} from "../digest/render.js";
 import { sendDigest } from "../digest/send.js";
 import { applyCheapRules } from "../filter/cheap.js";
 import { decide, type RankedMatch, rank } from "../filter/decide.js";
@@ -176,10 +182,15 @@ async function judgeJobs(jobs: Job[], ctx: JudgeContext, opts: RunOptions, deps:
       continue;
     }
     job.firstSeenAt = full?.job.firstSeenAt ?? compact?.firstSeenAt ?? job.firstSeenAt;
+    // Cut by the digest cap last time: carry it over instead of re-judging freshness.
     if (full?.verdict.kind === "match") {
-      // Matched earlier but cut by the digest cap: carry it over instead of re-judging freshness.
       state.jobs[job.id] = { ...full, lastSeenAt: nowIso };
       out.matches.push({ job: full.job, verdict: full.verdict });
+      continue;
+    }
+    if (full?.verdict.kind === "stub" && job.isStub) {
+      state.jobs[job.id] = { ...full, lastSeenAt: nowIso };
+      out.stubs.push(full.job);
       continue;
     }
 
@@ -273,7 +284,12 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
   await deps.sendDigest(digest, smtp);
 
   // Only what the email actually showed counts as digested; the rest rolls over to tomorrow.
-  commitRun(state, [...ranked.slice(0, MAX_MATCHES).map((m) => m.job), ...judged.stubs], fetched, now);
+  commitRun(
+    state,
+    [...ranked.slice(0, MAX_MATCHES).map((m) => m.job), ...judged.stubs.slice(0, MAX_STUBS)],
+    fetched,
+    now,
+  );
   saveState(instanceDir, state, now);
   return { digest, sent: true };
 }
