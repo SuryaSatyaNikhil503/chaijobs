@@ -1,0 +1,5 @@
+companies:
+  - name: Example Product Co
+    type: product
+    ats: greenhouse
+    slug: exampleproduct
