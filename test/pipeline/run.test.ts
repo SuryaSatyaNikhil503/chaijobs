@@ -184,6 +184,23 @@ describe("runCycle", () => {
     expect(existsSync(join(dir, "data", "llm-cache.json"))).toBe(true);
   });
 
+  it("alert-email jobs appear in the needs-full-JD section with alerts health", async () => {
+    const stub = raw(77, {
+      source: "alert-naukri",
+      url: "https://www.naukri.com/jd/job-listings-x-777777777777",
+      title: "Java Developer",
+      descriptionText: null,
+      postedAt: now.toISOString(),
+      postedAtKind: "email-received",
+    });
+    const { d, sent } = deps({ fetchAlerts: async () => ({ jobs: [stub], maxUid: 42 }) });
+    const dir = instance();
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d });
+    expect(sent[0]?.text).toContain("Needs full JD");
+    expect(sent[0]?.text).toContain("✓ alerts: 1 jobs");
+    expect(loadState(dir).imapMaxUid).toBe(42);
+  });
+
   it("one source throws: others still processed and health shows error", async () => {
     const { d, sent } = deps({
       fetchCompany: async (c) => {

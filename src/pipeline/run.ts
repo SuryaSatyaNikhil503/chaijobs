@@ -9,6 +9,7 @@ import { type FreshnessWindow, freshnessWindow } from "../filter/freshness.js";
 import { LlmCache } from "../llm/cache.js";
 import { type ChatCall, openAiCompatibleCall } from "../llm/chain.js";
 import { extractJdFacts, JdFacts } from "../llm/extract.js";
+import { fetchAlerts, withGmailInbox } from "../sources/alerts/imap.js";
 import { fetchAshby } from "../sources/ashby.js";
 import { fetchGreenhouse } from "../sources/greenhouse.js";
 import { fetchLever } from "../sources/lever.js";
@@ -233,10 +234,19 @@ function commitRun(state: State, shown: Job[], fetched: Fetched, now: Date): voi
 }
 
 export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDigest; sent: boolean }> {
-  const deps: RunDeps = { ...defaultDeps, ...opts.deps };
   const smtp = opts.dryRun ? null : requireSmtp(opts.env); // fail in seconds, not after the whole run
   const { instanceDir, now } = opts;
   const cfg = loadConfig(instanceDir);
+  const deps: RunDeps = { ...defaultDeps, ...opts.deps };
+  const gmail =
+    opts.env.GMAIL_ADDRESS && opts.env.GMAIL_APP_PASSWORD
+      ? { user: opts.env.GMAIL_ADDRESS, pass: opts.env.GMAIL_APP_PASSWORD }
+      : null;
+  const hasSenders = Object.values(cfg.alerts.senders).some((s) => s.length > 0);
+  if (opts.deps?.fetchAlerts === undefined && gmail && hasSenders) {
+    deps.fetchAlerts = (sinceUid) =>
+      withGmailInbox(gmail, (box) => fetchAlerts(cfg.alerts, box, sinceUid, now));
+  }
   const state = loadState(instanceDir);
   const user = loadUserState(instanceDir);
   const cache = new LlmCache(loadLlmCache(instanceDir));
