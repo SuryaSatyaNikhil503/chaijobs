@@ -102,7 +102,9 @@ export function renderDigest(d: DigestInput): RenderedDigest {
   text.push("", "Source health");
   html.push(`<h3 style="margin:16px 0 6px">Source health</h3><ul style="padding-left:18px;color:#52606d">`);
   for (const h of health) {
-    const line = h.ok ? `✓ ${h.source}: ${h.count} jobs` : `✗ ${h.source}: ${h.error ?? "failed"}`;
+    const line = h.ok
+      ? `✓ ${h.source}: ${h.count} jobs${h.error ? ` (${h.error})` : ""}`
+      : `✗ ${h.source}: ${h.error ?? "failed"}`;
     text.push(line);
     html.push(`<li>${esc(line)}</li>`);
   }
