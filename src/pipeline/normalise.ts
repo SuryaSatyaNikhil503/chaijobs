@@ -37,6 +37,12 @@ export function fallbackKey(job: Pick<Job, "companyKey" | "title" | "cities">): 
   return `${job.companyKey}|${normTitle(job.title)}|${job.cities[0] ?? ""}`;
 }
 
+/** One company|title|city key per city, so multi-city postings match single-city copies. */
+export function fallbackKeys(job: Pick<Job, "companyKey" | "title" | "cities">): string[] {
+  const cities = job.cities.length ? job.cities : [""];
+  return cities.map((city) => `${job.companyKey}|${normTitle(job.title)}|${city}`);
+}
+
 const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
 
 /** Canonical apply URL when it identifies the job; job-board redirect URLs fall back to company|title|city. */
@@ -78,7 +84,7 @@ export function dedupe(jobs: Job[]): Job[] {
   const groupOf = new Map<string, number>();
   const kept: Job[] = [];
   for (const job of jobs) {
-    const keys = [`id:${job.id}`, `fk:${fallbackKey(job)}`];
+    const keys = [`id:${job.id}`, ...fallbackKeys(job).map((k) => `fk:${k}`)];
     const existing = keys.map((k) => groupOf.get(k)).find((g) => g !== undefined);
     if (existing === undefined) {
       kept.push(job);

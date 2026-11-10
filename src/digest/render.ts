@@ -8,6 +8,8 @@ export interface DigestInput {
   skippedCounts: Partial<Record<RuleId, number>>;
   health: SourceHealth[];
   aiUnavailable: boolean;
+  /** Why AI checks were unavailable: no key configured, or every provider rate-limited/failed. */
+  aiReason?: "no-key" | "quota" | "time";
 }
 
 export interface RenderedDigest {
@@ -20,6 +22,23 @@ export const MAX_MATCHES = 25;
 
 const esc = (s: string) =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+/** Only http(s) links become clickable; anything else (javascript:, data:) is shown as plain text. */
+export function safeUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+const link = (url: string, label: string, style: string) => {
+  const safe = safeUrl(url);
+  return safe
+    ? `<a href="${esc(safe)}" style="${style}">${esc(label)}</a>`
+    : `<span style="${style}">${esc(label)}</span>`;
+};
 
 const dayLabel = (d: Date) =>
   new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", timeZone: "Asia/Kolkata" }).format(d);
@@ -48,10 +67,14 @@ export function renderDigest(d: DigestInput): RenderedDigest {
   ];
 
   if (d.aiUnavailable) {
-    text.push("⚠ Free AI quota ran out: matches below are not AI-checked (rules only).", "");
-    html.push(
-      `<p style="background:#fff4e5;padding:8px 10px;border-radius:6px">⚠ Free AI quota ran out: matches below are <b>not AI-checked</b> (rules only).</p>`,
-    );
+    const banner =
+      d.aiReason === "no-key"
+        ? "⚠ No AI key is configured: matches below are not AI-checked (rules only). Add a free LLM key to your repo secrets."
+        : d.aiReason === "time"
+          ? "⚠ AI checks hit today's time limit: some matches below are not AI-checked (rules only)."
+          : "⚠ Free AI quota ran out: matches below are not AI-checked (rules only).";
+    text.push(banner, "");
+    html.push(`<p style="background:#fff4e5;padding:8px 10px;border-radius:6px">${esc(banner)}</p>`);
   }
 
   text.push(n ? "Matches" : "No new matches today.");
@@ -67,11 +90,11 @@ export function renderDigest(d: DigestInput): RenderedDigest {
     text.push(
       `• ${job.title} @ ${job.company} | ${where(job)} | ${postedAge(job, d.date)} | ${tags}`,
       ...(skills ? [`  ${skills}`] : []),
-      `  ${job.url}`,
+      `  ${safeUrl(job.url) ?? "(link withheld: not http)"}`,
     );
     html.push(
       `<div style="margin:0 0 12px;padding:10px;border:1px solid #e4e7eb;border-radius:8px">`,
-      `<a href="${esc(job.url)}" style="font-weight:600;color:#1d4ed8;text-decoration:none">${esc(job.title)}</a>`,
+      link(job.url, job.title, "font-weight:600;color:#1d4ed8;text-decoration:none"),
       `<div>${esc(job.company)} · ${esc(where(job))} · ${esc(postedAge(job, d.date))} · <i>${esc(tags)}</i></div>`,
       skills ? `<div style="color:#52606d">${esc(skills)}</div>` : "",
       `</div>`,
@@ -83,13 +106,14 @@ export function renderDigest(d: DigestInput): RenderedDigest {
   }
 
   if (d.stubs.length) {
-    text.push("", "From your alerts: needs full JD");
-    html.push(`<h3 style="margin:16px 0 6px">From your alerts: needs full JD</h3>`);
+    text.push("", "Needs full JD (open the link to read it)");
+    html.push(`<h3 style="margin:16px 0 6px">Needs full JD (open the link to read it)</h3>`);
     for (const job of d.stubs) {
-      text.push(`• ${job.title} @ ${job.company} | ${where(job)}`, `  ${job.url}`);
-      html.push(
-        `<div><a href="${esc(job.url)}" style="color:#1d4ed8">${esc(job.title)}</a> · ${esc(job.company)}</div>`,
+      text.push(
+        `• ${job.title} @ ${job.company} | ${where(job)}`,
+        `  ${safeUrl(job.url) ?? "(link withheld: not http)"}`,
       );
+      html.push(`<div>${link(job.url, job.title, "color:#1d4ed8")} · ${esc(job.company)}</div>`);
     }
   }
 

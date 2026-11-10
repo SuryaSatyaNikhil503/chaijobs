@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "template"
+    "template",
+    "scripts"
   ],
   "engines": {
     "node": ">=24"

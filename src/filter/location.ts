@@ -66,15 +66,18 @@ export function normaliseLocation(raw: string[]): LocationInfo {
 
   for (const entry of raw) {
     const text = entry.toLowerCase();
-    for (const part of text.split(SEPARATORS)) {
-      for (const word of part.trim().split(/[\s()-]+/)) {
-        const city = CITY_VARIANTS[word];
-        if (city) cities.add(city);
+    const foreign = OTHER_COUNTRIES.test(text);
+    if (!foreign) {
+      for (const part of text.split(SEPARATORS)) {
+        for (const word of part.trim().split(/[^a-z]+/)) {
+          const city = CITY_VARIANTS[word];
+          if (city) cities.add(city);
+        }
       }
+      if (SOUTH_STATES.some((s) => text.includes(s))) southState = true;
     }
-    if (SOUTH_STATES.some((s) => text.includes(s))) southState = true;
     const remote = /\bremote\b/.test(text);
-    const india = /\bindia\b|,\s*in\b|\(in\)/.test(text);
+    const india = /\bindia\b/.test(text);
     const anywhere = /\b(anywhere|worldwide|global)\b/.test(text) && !OTHER_COUNTRIES.test(text);
     if ((remote && india) || anywhere) remoteIndia = true;
   }

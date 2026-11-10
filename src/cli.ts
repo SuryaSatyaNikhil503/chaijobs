@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
-import { initInstance } from "./commands/init.js";
+import { initInstance, resolveReleaseRef } from "./commands/init.js";
 import { verifyCompanies } from "./commands/verifyCompanies.js";
 import { loadConfig } from "./config/load.js";
 import { defaultDeps, runCycle } from "./pipeline/run.js";
@@ -33,12 +33,14 @@ program
 program
   .command("init <dir>")
   .description("Create your private instance folder from the template")
-  .action((dir: string) => {
-    initInstance(resolve(dir));
-    console.log(
-      `Created ${dir}. Next: push it as a PRIVATE GitHub repo and add your secrets (see its README).`,
-    );
+  .option("--ref <sha>", "chaijobs commit to pin (default: the commit of this version's release tag)")
+  .action((dir: string, opts: { ref?: string }) => {
+    const ref = opts.ref ?? resolveReleaseRef(pkg.version);
+    initInstance(resolve(dir), ref);
+    console.log(`Created ${dir}, pinned to chaijobs ${ref.slice(0, 12)}.`);
+    console.log("Next: push it as a PRIVATE GitHub repo and add your secrets (see its README).");
   });
+
 program
   .command("companies")
   .description("Company watch-list tools")

@@ -18,6 +18,18 @@ describe("normaliseLocation", () => {
     expect(r.remoteIndia).toBe(remoteIndia);
   });
 
+  it("a US Salem is not South India", () => {
+    expect(normaliseLocation(["Salem, OR, USA"]).southIndia).toBe(false);
+  });
+
+  it("Remote, IN (Indiana) is not remote India", () => {
+    expect(normaliseLocation(["Remote, IN"]).remoteIndia).toBe(false);
+  });
+
+  it("trailing punctuation does not hide a city", () => {
+    expect(normaliseLocation(["Bangalore."]).cities).toEqual(["Bengaluru"]);
+  });
+
   it("canonicalises Bangalore to Bengaluru", () => {
     expect(normaliseLocation(["Bangalore/Bengaluru, India"]).cities).toContain("Bengaluru");
   });
@@ -35,6 +47,5 @@ describe("normaliseLocation", () => {
   it("remote anywhere or worldwide counts as remote India", () => {
     expect(normaliseLocation(["Remote - Anywhere"]).remoteIndia).toBe(true);
     expect(normaliseLocation(["Worldwide (Remote)"]).remoteIndia).toBe(true);
-    expect(normaliseLocation(["Remote, IN"]).remoteIndia).toBe(true);
   });
 });

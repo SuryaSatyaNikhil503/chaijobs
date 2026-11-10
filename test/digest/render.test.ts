@@ -90,7 +90,7 @@ describe("renderDigest", () => {
       stubs: [job(7, { descriptionText: null })],
       skippedCounts: { location: 12 },
     });
-    expect(d.text).toContain("needs full JD");
+    expect(d.text).toContain("Needs full JD");
     expect(d.text).toContain("location: 12");
   });
 
@@ -100,6 +100,20 @@ describe("renderDigest", () => {
       matches: [{ job: job(1, { title: "<script>x</script>" }), verdict: match() }],
     });
     expect(d.html).not.toContain("<script>");
+  });
+
+  it("non-http links are not rendered as links", () => {
+    const d = renderDigest({
+      ...base,
+      matches: [{ job: job(1, { url: "javascript:alert(1)" }), verdict: match() }],
+    });
+    expect(d.html).not.toContain("javascript:");
+  });
+
+  it("no LLM key configured says so instead of quota", () => {
+    const d = renderDigest({ ...base, aiUnavailable: true, aiReason: "no-key" });
+    expect(d.text).toContain("No AI key is configured");
+    expect(d.text).not.toContain("quota ran out");
   });
 
   it("html has no external images or scripts", () => {

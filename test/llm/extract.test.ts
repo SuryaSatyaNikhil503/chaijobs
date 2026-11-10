@@ -11,6 +11,7 @@ const p = (name: string): ProviderEntry => ({
 });
 const chain = [p("groq"), p("gemini")];
 const env = { GROQ_KEY: "g", GEMINI_KEY: "m" };
+const JD = "Java and Spring Boot, 2-4 years of experience. Kafka is a plus.";
 const good = JSON.stringify({
   minYears: 2,
   maxYears: 4,
@@ -27,7 +28,7 @@ describe("extractJdFacts", () => {
       calls.push(prov.name);
       return prov.name === "groq" ? { status: 429, text: "" } : { status: 200, text: good };
     };
-    const r = await extractJdFacts("JD", chain, env, call);
+    const r = await extractJdFacts(JD, chain, env, call);
     expect(r).toMatchObject({ ok: true, provider: "gemini", facts: { minYears: 2, roleType: "backend" } });
     expect(calls).toEqual(["groq", "gemini"]);
   });
@@ -38,7 +39,7 @@ describe("extractJdFacts", () => {
       calls.push(prov.name);
       return prov.name === "groq" ? { status: 200, text: "not json" } : { status: 200, text: good };
     };
-    const r = await extractJdFacts("JD", chain, env, call);
+    const r = await extractJdFacts(JD, chain, env, call);
     expect(r.ok).toBe(true);
     expect(calls).toEqual(["groq", "groq", "gemini"]);
   });
@@ -72,6 +73,39 @@ describe("extractJdFacts", () => {
       text: `\`\`\`json\n${good}\n\`\`\``,
     }));
     expect(r.ok).toBe(true);
+  });
+
+  it("drops skills and emails the JD never mentions", async () => {
+    const injected = JSON.stringify({
+      minYears: 0,
+      maxYears: null,
+      mustHave: ["Java", "Rust"],
+      niceToHave: ["Kafka"],
+      roleType: "backend",
+      applyEmail: "attacker@evil.example",
+    });
+    const r = await extractJdFacts("Java role. 5+ years of experience.", chain, env, async () => ({
+      status: 200,
+      text: injected,
+    }));
+    expect(r).toMatchObject({
+      ok: true,
+      facts: { mustHave: ["Java"], niceToHave: [], applyEmail: null, minYears: 5 },
+    });
+  });
+
+  it("keeps an apply email that appears in the JD", async () => {
+    const withEmail = JSON.stringify({ ...JSON.parse(good), applyEmail: "jobs@example.com" });
+    const r = await extractJdFacts(
+      "Java, Spring Boot. Send CVs to jobs@example.com",
+      chain,
+      env,
+      async () => ({
+        status: 200,
+        text: withEmail,
+      }),
+    );
+    expect(r).toMatchObject({ ok: true, facts: { applyEmail: "jobs@example.com" } });
   });
 
   it("zod rejects minYears 99", () => {

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,6 +147,41 @@ describe("runCycle", () => {
     expect(r.sent).toBe(true);
     expect(sent[0]?.text).toContain("Backend Engineer 1");
     expect(loadState(dir).lastSuccessfulRun).toBe(now.toISOString());
+  });
+
+  it("skipped jobs are stored compactly", async () => {
+    const dir = instance();
+    const pune = Array.from({ length: 2000 }, (_, i) =>
+      raw(i, { locations: ["Pune, Maharashtra"], descriptionText: "x".repeat(6000) }),
+    );
+    const { d } = deps({ fetchCompany: async (c) => (c.slug === "exampleproduct" ? pune : []) });
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d });
+    expect(statSync(join(dir, "data", "state.json")).size).toBeLessThan(500_000);
+  });
+
+  it("missing Gmail credentials fail before any fetching", async () => {
+    let fetched = 0;
+    const { d } = deps({
+      fetchCompany: async () => {
+        fetched++;
+        return [];
+      },
+    });
+    await expect(runCycle({ instanceDir: instance(), now, env: {}, dryRun: false, deps: d })).rejects.toThrow(
+      /GMAIL_ADDRESS/,
+    );
+    expect(fetched).toBe(0);
+  });
+
+  it("LLM cache is saved even when sending fails", async () => {
+    const dir = instance();
+    const { d } = deps({
+      sendDigest: async () => {
+        throw new Error("SMTP down");
+      },
+    });
+    await expect(runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d })).rejects.toThrow();
+    expect(existsSync(join(dir, "data", "llm-cache.json"))).toBe(true);
   });
 
   it("one source throws: others still processed and health shows error", async () => {

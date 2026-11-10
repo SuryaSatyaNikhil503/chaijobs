@@ -1,12 +1,12 @@
 # Free LLM providers, tried in order. Any OpenAI-compatible endpoint works.
 # Add the matching secret (apiKeyEnv) to your instance repo; providers without a key are skipped.
-# Model ids change often: check each provider's current free models.
+# Verified 2026-11-10 against console.groq.com/docs/models and the Gemini models page. Model ids change: re-check if a provider starts failing.
 providers:
   - name: groq
     baseUrl: https://api.groq.com/openai/v1
-    model: llama-3.3-70b-versatile
+    model: openai/gpt-oss-20b
     apiKeyEnv: GROQ_API_KEY
   - name: gemini
     baseUrl: https://generativelanguage.googleapis.com/v1beta/openai
-    model: gemini-2.5-flash-lite
+    model: gemini-3.5-flash-lite
     apiKeyEnv: GEMINI_API_KEY

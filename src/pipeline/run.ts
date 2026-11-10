@@ -1,11 +1,11 @@
 import { loadConfig } from "../config/load.js";
-import type { Company } from "../config/schema.js";
+import type { Company, Config } from "../config/schema.js";
 import type { Job, MatchVerdict, RawJob, RuleId, Verdict } from "../core/types.js";
-import { MAX_MATCHES, type RenderedDigest, renderDigest } from "../digest/render.js";
+import { type DigestInput, MAX_MATCHES, type RenderedDigest, renderDigest } from "../digest/render.js";
 import { sendDigest } from "../digest/send.js";
 import { applyCheapRules } from "../filter/cheap.js";
-import { decide, rank } from "../filter/decide.js";
-import { freshnessWindow } from "../filter/freshness.js";
+import { decide, type RankedMatch, rank } from "../filter/decide.js";
+import { type FreshnessWindow, freshnessWindow } from "../filter/freshness.js";
 import { LlmCache } from "../llm/cache.js";
 import { type ChatCall, openAiCompatibleCall } from "../llm/chain.js";
 import { extractJdFacts, JdFacts } from "../llm/extract.js";
@@ -14,15 +14,16 @@ import { fetchGreenhouse } from "../sources/greenhouse.js";
 import { fetchLever } from "../sources/lever.js";
 import { fetchSerpApi } from "../sources/serpapi.js";
 import {
-  type JobRecord,
   loadLlmCache,
   loadState,
   loadUserState,
   type SourceHealth,
+  type State,
   saveLlmCache,
   saveState,
+  type UserState,
 } from "../state/store.js";
-import { dedupe, fallbackKey, toJob } from "./normalise.js";
+import { dedupe, fallbackKeys, toJob } from "./normalise.js";
 
 export interface RunDeps {
   fetchCompany: (c: Company) => Promise<RawJob[]>;
@@ -60,147 +61,209 @@ export interface RunOptions {
 const FETCH_CONCURRENCY = 6;
 const DEFAULT_LLM_BUDGET_MS = 8 * 60_000;
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
 /** Runs tasks with a concurrency limit, returning results in input order. */
-async function pool<T>(items: (() => Promise<T>)[], limit: number): Promise<T[]> {
-  const out: T[] = new Array(items.length);
+async function pool<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const out: T[] = new Array(tasks.length);
   let next = 0;
   const worker = async () => {
-    while (next < items.length) {
+    while (next < tasks.length) {
       const i = next++;
-      out[i] = await (items[i] as () => Promise<T>)();
+      out[i] = await (tasks[i] as () => Promise<T>)();
     }
   };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
   return out;
 }
 
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+interface Attempt {
+  jobs: RawJob[];
+  health: SourceHealth;
+}
+
+async function attempt(source: string, fn: () => Promise<RawJob[]>): Promise<Attempt> {
+  try {
+    const jobs = await fn();
+    return { jobs, health: { source, ok: true, count: jobs.length, error: null } };
+  } catch (e) {
+    return { jobs: [], health: { source, ok: false, count: 0, error: errorText(e) } };
+  }
+}
+
+interface Fetched {
+  raws: RawJob[];
+  health: SourceHealth[];
+  imapMaxUid: number;
+}
+
+/** Stage 1: fetch every source. A failing source is recorded in health, never fatal. */
+async function fetchAll(cfg: Config, user: UserState, state: State, opts: RunOptions, deps: RunDeps) {
+  const out: Fetched = { raws: [], health: [], imapMaxUid: state.imapMaxUid };
+  const collect = (r: Attempt) => {
+    out.raws.push(...r.jobs);
+    out.health.push(r.health);
+  };
+
+  const seen = new Set<string>();
+  const tasks: (() => Promise<Attempt>)[] = [];
+  for (const c of [...cfg.companies, ...user.extraCompanies]) {
+    const key = `${c.ats}:${c.slug}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tasks.push(() => attempt(key, () => deps.fetchCompany(c)));
+  }
+  for (const r of await pool(tasks, FETCH_CONCURRENCY)) collect(r);
+
+  if (cfg.serpapi.enabled) {
+    const key = opts.env.SERPAPI_KEY;
+    if (!key) out.health.push({ source: "serpapi", ok: true, count: 0, error: "no key" });
+    else {
+      for (const q of cfg.serpapi.queries) {
+        collect(await attempt(`serpapi:${q}`, () => deps.fetchSerpApi(q, key, opts.now)));
+      }
+    }
+  }
+
+  const { fetchAlerts } = deps;
+  if (fetchAlerts) {
+    collect(
+      await attempt("alerts", async () => {
+        const r = await fetchAlerts(state.imapMaxUid);
+        out.imapMaxUid = Math.max(out.imapMaxUid, r.maxUid);
+        return r.jobs;
+      }),
+    );
+  }
+  return out;
+}
+
+interface Judged {
+  matches: RankedMatch[];
+  stubs: Job[];
+  skippedCounts: Partial<Record<RuleId, number>>;
+  aiReason: DigestInput["aiReason"] | null;
+}
+
+interface JudgeContext {
+  cfg: Config;
+  state: State;
+  user: UserState;
+  cache: LlmCache;
+  win: FreshnessWindow;
+}
+
+/** Stage 2: decide every job and update state records. Rule code decides; the LLM only extracts facts. */
+async function judgeJobs(jobs: Job[], ctx: JudgeContext, opts: RunOptions, deps: RunDeps): Promise<Judged> {
+  const { cfg, state, user, cache, win } = ctx;
+  const nowIso = opts.now.toISOString();
+  const chainKey = cfg.providers.map((p) => p.model).join("|");
+  const blocked = new Set<string>();
+  const llmStart = Date.now();
+  const budget = opts.llmBudgetMs ?? DEFAULT_LLM_BUDGET_MS;
+  const out: Judged = { matches: [], stubs: [], skippedCounts: {}, aiReason: null };
+  const count = (rule: RuleId) => {
+    out.skippedCounts[rule] = (out.skippedCounts[rule] ?? 0) + 1;
+  };
+
+  for (const job of jobs) {
+    const full = state.jobs[job.id];
+    const compact = state.seen[job.id];
+    const digested = Boolean(full?.digestedAt) || fallbackKeys(job).some((k) => state.digestedKeys[k]);
+    if (digested || user.statuses[job.id]) {
+      count("already-seen");
+      continue;
+    }
+    job.firstSeenAt = full?.job.firstSeenAt ?? compact?.firstSeenAt ?? job.firstSeenAt;
+    if (full?.verdict.kind === "match") {
+      // Matched earlier but cut by the digest cap: carry it over instead of re-judging freshness.
+      state.jobs[job.id] = { ...full, lastSeenAt: nowIso };
+      out.matches.push({ job: full.job, verdict: full.verdict });
+      continue;
+    }
+
+    let verdict: Verdict | null = applyCheapRules(job, cfg.filters, win);
+    let facts: JdFacts | null = null;
+    if (!verdict && !job.isStub && job.descriptionText) {
+      const cached = JdFacts.safeParse(cache.get(chainKey, job.descriptionText));
+      if (cached.success) facts = cached.data;
+      else if (Date.now() - llmStart >= budget) out.aiReason = "time";
+      else {
+        const r = await extractJdFacts(job.descriptionText, cfg.providers, opts.env, deps.chatCall, blocked);
+        if (r.ok) {
+          facts = r.facts;
+          cache.set(chainKey, job.descriptionText, r.facts, nowIso);
+        } else out.aiReason = r.reason === "no-providers" ? "no-key" : "quota";
+      }
+    }
+    verdict ??= decide(job, facts, cfg.skills, cfg.filters);
+
+    if (verdict.kind === "skip") {
+      count(verdict.rule);
+      delete state.jobs[job.id];
+      state.seen[job.id] = { firstSeenAt: job.firstSeenAt, lastSeenAt: nowIso, rule: verdict.rule };
+      continue;
+    }
+    delete state.seen[job.id];
+    state.jobs[job.id] = { job, verdict, facts, digestedAt: null, lastSeenAt: nowIso };
+    if (verdict.kind === "stub") out.stubs.push(job);
+    else out.matches.push({ job, verdict: verdict as MatchVerdict });
+  }
+  return out;
+}
+
+function requireSmtp(env: RunOptions["env"]): { user: string; pass: string } {
+  const user = env.GMAIL_ADDRESS;
+  const pass = env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set to send the digest");
+  return { user, pass };
+}
+
+/** Stage 3: after a successful send, mark only what the email showed and commit the run. */
+function commitRun(state: State, shown: Job[], fetched: Fetched, now: Date): void {
+  const nowIso = now.toISOString();
+  for (const job of shown) {
+    const record = state.jobs[job.id];
+    if (record) record.digestedAt = nowIso;
+    for (const k of fallbackKeys(job)) state.digestedKeys[k] = nowIso;
+  }
+  state.lastSuccessfulRun = nowIso;
+  state.lastHealth = fetched.health;
+  state.imapMaxUid = fetched.imapMaxUid;
+}
 
 export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDigest; sent: boolean }> {
   const deps: RunDeps = { ...defaultDeps, ...opts.deps };
-  const { instanceDir, now, env } = opts;
-  const nowIso = now.toISOString();
+  const smtp = opts.dryRun ? null : requireSmtp(opts.env); // fail in seconds, not after the whole run
+  const { instanceDir, now } = opts;
   const cfg = loadConfig(instanceDir);
   const state = loadState(instanceDir);
   const user = loadUserState(instanceDir);
   const cache = new LlmCache(loadLlmCache(instanceDir));
   const win = freshnessWindow(state.lastSuccessfulRun, now, cfg.filters.windowCapHours);
 
-  // 1. Fetch every source; a failure is recorded, never fatal.
-  const raws: RawJob[] = [];
-  const health: SourceHealth[] = [];
-  const attempt = async (source: string, fn: () => Promise<RawJob[]>) => {
-    try {
-      const jobs = await fn();
-      return { jobs, health: { source, ok: true, count: jobs.length, error: null } };
-    } catch (e) {
-      return { jobs: [] as RawJob[], health: { source, ok: false, count: 0, error: errorText(e) } };
-    }
-  };
-  const track = async (source: string, fn: () => Promise<RawJob[]>) => {
-    const r = await attempt(source, fn);
-    raws.push(...r.jobs);
-    health.push(r.health);
-  };
-  const seen = new Set<string>();
-  const companyTasks = [...cfg.companies, ...user.extraCompanies]
-    .filter((c) => {
-      const key = `${c.ats}:${c.slug}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((c) => () => attempt(`${c.ats}:${c.slug}`, () => deps.fetchCompany(c)));
-  for (const r of await pool(companyTasks, FETCH_CONCURRENCY)) {
-    raws.push(...r.jobs);
-    health.push(r.health);
-  }
-  if (cfg.serpapi.enabled) {
-    const key = env.SERPAPI_KEY;
-    if (!key) health.push({ source: "serpapi", ok: true, count: 0, error: "no key" });
-    else
-      for (const q of cfg.serpapi.queries) await track(`serpapi:${q}`, () => deps.fetchSerpApi(q, key, now));
-  }
-  let imapMaxUid = state.imapMaxUid;
-  if (deps.fetchAlerts) {
-    const fetchAlerts = deps.fetchAlerts;
-    await track("alerts", async () => {
-      const r = await fetchAlerts(state.imapMaxUid);
-      imapMaxUid = Math.max(imapMaxUid, r.maxUid);
-      return r.jobs;
-    });
-  }
+  const fetched = await fetchAll(cfg, user, state, opts, deps);
+  const jobs = dedupe(fetched.raws.map((r) => toJob(r, now.toISOString())));
+  const judged = await judgeJobs(jobs, { cfg, state, user, cache, win }, opts, deps);
+  const ranked = rank(judged.matches);
+  const digest = renderDigest({
+    date: now,
+    matches: ranked,
+    stubs: judged.stubs,
+    skippedCounts: judged.skippedCounts,
+    health: fetched.health,
+    aiUnavailable: judged.aiReason !== null,
+    ...(judged.aiReason ? { aiReason: judged.aiReason } : {}),
+  });
+  if (!smtp) return { digest, sent: false };
 
-  // 2. Normalise, dedupe, decide.
-  const jobs = dedupe(raws.map((r) => toJob(r, nowIso)));
-  const chainKey = cfg.providers.map((p) => p.model).join("|");
-  const skippedCounts: Partial<Record<RuleId, number>> = {};
-  const matches: { job: Job; verdict: MatchVerdict }[] = [];
-  const stubs: Job[] = [];
-  let aiUnavailable = false;
-  const blockedProviders = new Set<string>();
-  const llmStart = Date.now();
-  const llmBudgetMs = opts.llmBudgetMs ?? DEFAULT_LLM_BUDGET_MS;
-
-  for (const job of jobs) {
-    const previous = state.jobs[job.id];
-    if (previous?.digestedAt || user.statuses[job.id] || state.digestedKeys[fallbackKey(job)]) {
-      skippedCounts["already-seen"] = (skippedCounts["already-seen"] ?? 0) + 1;
-      continue;
-    }
-    if (previous) job.firstSeenAt = previous.job.firstSeenAt;
-    if (previous?.verdict.kind === "match") {
-      // Matched earlier but cut by the digest cap: carry it over instead of re-judging freshness.
-      state.jobs[job.id] = { ...previous, lastSeenAt: nowIso };
-      matches.push({ job: previous.job, verdict: previous.verdict });
-      continue;
-    }
-    let verdict: Verdict | null = applyCheapRules(job, cfg.filters, win);
-    let facts: JdFacts | null = null;
-    if (!verdict && !job.isStub && job.descriptionText) {
-      const cached = JdFacts.safeParse(cache.get(chainKey, job.descriptionText));
-      if (cached.success) facts = cached.data;
-      else if (Date.now() - llmStart >= llmBudgetMs) aiUnavailable = true;
-      else {
-        const r = await extractJdFacts(
-          job.descriptionText,
-          cfg.providers,
-          env,
-          deps.chatCall,
-          blockedProviders,
-        );
-        if (r.ok) {
-          facts = r.facts;
-          cache.set(chainKey, job.descriptionText, r.facts);
-        } else aiUnavailable = true;
-      }
-    }
-    verdict ??= decide(job, facts, cfg.skills, cfg.filters);
-    state.jobs[job.id] = { job, verdict, facts, digestedAt: null, lastSeenAt: nowIso } satisfies JobRecord;
-    if (verdict.kind === "skip") skippedCounts[verdict.rule] = (skippedCounts[verdict.rule] ?? 0) + 1;
-    else if (verdict.kind === "stub") stubs.push(job);
-    else matches.push({ job, verdict });
-  }
-
-  const ranked = rank(matches);
-  const digest = renderDigest({ date: now, matches: ranked, stubs, skippedCounts, health, aiUnavailable });
-  if (opts.dryRun) return { digest, sent: false };
-
-  // 3. Send, then (and only then) mark the run successful.
-  const user_ = env.GMAIL_ADDRESS;
-  const pass = env.GMAIL_APP_PASSWORD;
-  if (!user_ || !pass) throw new Error("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set to send the digest");
-  await deps.sendDigest(digest, { user: user_, pass });
+  // LLM results are worth keeping even if sending fails; job state is committed only after a send.
+  cache.prune(now);
+  saveLlmCache(instanceDir, cache.toJSON());
+  await deps.sendDigest(digest, smtp);
 
   // Only what the email actually showed counts as digested; the rest rolls over to tomorrow.
-  for (const job of [...ranked.slice(0, MAX_MATCHES).map((m) => m.job), ...stubs]) {
-    (state.jobs[job.id] as JobRecord).digestedAt = nowIso;
-    state.digestedKeys[fallbackKey(job)] = nowIso;
-  }
-  state.lastSuccessfulRun = nowIso;
-  state.lastHealth = health;
-  state.imapMaxUid = imapMaxUid;
+  commitRun(state, [...ranked.slice(0, MAX_MATCHES).map((m) => m.job), ...judged.stubs], fetched, now);
   saveState(instanceDir, state, now);
-  saveLlmCache(instanceDir, cache.toJSON());
   return { digest, sent: true };
 }

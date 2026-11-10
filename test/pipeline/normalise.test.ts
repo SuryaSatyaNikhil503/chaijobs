@@ -53,6 +53,15 @@ describe("normalise", () => {
     expect(out[0]?.source).toBe("greenhouse");
   });
 
+  it("multi-city posting dedupes with a single-city copy", () => {
+    const one = toJob(
+      raw({ source: "serpapi", url: "https://www.linkedin.com/jobs/view/1", locations: ["Hyderabad"] }),
+      now,
+    );
+    const many = toJob(raw({ locations: ["Bengaluru; Hyderabad"] }), now);
+    expect(dedupe([one, many])).toHaveLength(1);
+  });
+
   it("stub replaced by full JD duplicate", () => {
     const stub = toJob(
       raw({

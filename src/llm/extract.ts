@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProviderEntry } from "../config/schema.js";
+import { minYearsFromText } from "../filter/cheap.js";
 import { type ChatCall, type ChatMessage, openAiCompatibleCall } from "./chain.js";
 
 export const JdFacts = z.object({
@@ -51,6 +52,29 @@ function parseFacts(text: string): JdFacts | null {
   }
 }
 
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9+#]/g, "");
+
+/**
+ * JD text is untrusted and is also the LLM's input, so the LLM's answer is checked against it:
+ * skills and the apply email must literally appear in the text, and a years figure the text states
+ * plainly wins over the model's. A crafted posting cannot promote itself with invented facts.
+ */
+export function groundFacts(facts: JdFacts, text: string): JdFacts {
+  const haystack = squash(text);
+  const inText = (skill: string) => squash(skill).length > 0 && haystack.includes(squash(skill));
+  const stated = minYearsFromText(text);
+  return {
+    ...facts,
+    mustHave: facts.mustHave.filter(inText),
+    niceToHave: facts.niceToHave.filter(inText),
+    minYears: stated ?? facts.minYears,
+    applyEmail:
+      facts.applyEmail && text.toLowerCase().includes(facts.applyEmail.toLowerCase())
+        ? facts.applyEmail
+        : null,
+  };
+}
+
 /** Tries each configured provider in order; 429/5xx/network errors fall through, invalid output retries once. */
 export async function extractJdFacts(
   text: string,
@@ -84,7 +108,7 @@ export async function extractJdFacts(
         break;
       }
       const facts = parseFacts(res.text);
-      if (facts) return { ok: true, facts, provider: p.name };
+      if (facts) return { ok: true, facts: groundFacts(facts, text), provider: p.name };
       sawInvalid = true;
     }
   }

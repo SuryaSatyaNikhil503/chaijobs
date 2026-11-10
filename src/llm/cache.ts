@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 
-/** Extraction results keyed by sha256(model + text); persisted by the state store as data/llm-cache.json. */
+interface Entry {
+  v: unknown;
+  at: string;
+}
+
+const PRUNE_DAYS = 30;
+const isEntry = (e: unknown): e is Entry => typeof e === "object" && e !== null && "v" in e && "at" in e;
+
+/** Extraction results keyed by sha256(model + text), each stamped so the file can be pruned. */
 export class LlmCache {
   constructor(private readonly entries: Record<string, unknown>) {}
 
@@ -9,11 +17,20 @@ export class LlmCache {
   }
 
   get(model: string, text: string): unknown {
-    return this.entries[this.key(model, text)];
+    const e = this.entries[this.key(model, text)];
+    return isEntry(e) ? e.v : undefined;
   }
 
-  set(model: string, text: string, value: unknown): void {
-    this.entries[this.key(model, text)] = value;
+  set(model: string, text: string, value: unknown, nowIso: string): void {
+    this.entries[this.key(model, text)] = { v: value, at: nowIso } satisfies Entry;
+  }
+
+  /** Drops entries older than 30 days, and legacy entries that carry no timestamp. */
+  prune(now: Date): void {
+    const cutoff = now.getTime() - PRUNE_DAYS * 86_400_000;
+    for (const [k, e] of Object.entries(this.entries)) {
+      if (!isEntry(e) || Date.parse(e.at) < cutoff) delete this.entries[k];
+    }
   }
 
   toJSON(): Record<string, unknown> {
