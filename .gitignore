@@ -1,0 +1,26 @@
+# dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tgz
+
+# secrets and environment
+.env
+.env.*
+!.env.example
+
+# personal data: never commit
+data/
+factbank/
+.chaijobs/
+*.pdf
+*.eml
+*.mbox
+
+# executor scratch
+.superpowers/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
