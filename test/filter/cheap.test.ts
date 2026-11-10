@@ -36,6 +36,14 @@ describe("minYearsFromText", () => {
     expect(minYearsFromText(text)).toBe(expected);
   });
 
+  it("finds the requirement after a boilerplate figure", () => {
+    expect(minYearsFromText("We have 20+ years of history. 2 years experience preferred")).toBe(2);
+  });
+
+  it("ignores plus-form company age", () => {
+    expect(minYearsFromText("Our 25+ years legacy in banking")).toBeNull();
+  });
+
   it("ignores company age", () => {
     expect(minYearsFromText("We have 10 years of history building fintech.")).toBeNull();
   });

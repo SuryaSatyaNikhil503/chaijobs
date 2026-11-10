@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { RawJob } from "../../src/core/types.js";
 import type { RenderedDigest } from "../../src/digest/render.js";
 import { type RunDeps, runCycle } from "../../src/pipeline/run.js";
-import { loadState, saveState } from "../../src/state/store.js";
+import { emptyState, loadState, saveState } from "../../src/state/store.js";
 
 const now = new Date("2026-11-11T01:37:00Z");
 const env = { GMAIL_ADDRESS: "me@example.com", GMAIL_APP_PASSWORD: "pw", GROQ_KEY: "k" };
@@ -51,7 +51,95 @@ function deps(over: Partial<RunDeps> = {}) {
   return { d, sent };
 }
 
+const undated = (i: number): RawJob => raw(i, { postedAt: null, postedAtKind: "first-seen" });
+
 describe("runCycle", () => {
+  it("undated backlog from the first run does not flood the second digest", async () => {
+    const dir = instance();
+    const fetchCompany = async (c: { slug: string }) =>
+      c.slug === "exampleproduct" ? [undated(1), undated(2)] : [];
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: deps({ fetchCompany }).d });
+    const second = deps({ fetchCompany });
+    const later = new Date(now.getTime() + 24 * 3_600_000);
+    await runCycle({ instanceDir: dir, now: later, env, dryRun: false, deps: second.d });
+    expect(second.sent[0]?.subject).toContain("0 new matches");
+  });
+
+  it("matches beyond the digest cap roll over to the next digest", async () => {
+    const dir = instance();
+    const thirty = Array.from({ length: 30 }, (_, i) => raw(i));
+    const fetchCompany = async (c: { slug: string }) => (c.slug === "exampleproduct" ? thirty : []);
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: deps({ fetchCompany }).d });
+    const digested = Object.values(loadState(dir).jobs).filter((r) => r.digestedAt).length;
+    expect(digested).toBe(25);
+    const second = deps({ fetchCompany });
+    await runCycle({
+      instanceDir: dir,
+      now: new Date(now.getTime() + 3_600_000),
+      env,
+      dryRun: false,
+      deps: second.d,
+    });
+    expect(second.sent[0]?.subject).toContain("5 new matches");
+  });
+
+  it("job digested from serpapi is not repeated when it later arrives from greenhouse", async () => {
+    const dir = instance();
+    const viaSerp = raw(1, {
+      source: "serpapi",
+      url: "https://www.linkedin.com/jobs/view/555",
+      company: "Example Product Co",
+      title: "Backend Engineer 1",
+    });
+    const first = deps({ fetchCompany: async () => [], fetchSerpApi: async () => [viaSerp] });
+    await runCycle({
+      instanceDir: dir,
+      now,
+      env: { ...env, SERPAPI_KEY: "s" },
+      dryRun: false,
+      deps: first.d,
+    });
+    expect(first.sent[0]?.subject).toContain("1 new match ");
+    const fresh = raw(1, { postedAt: new Date(now.getTime() + 1_800_000).toISOString() });
+    const second = deps({ fetchCompany: async (c) => (c.slug === "exampleproduct" ? [fresh] : []) });
+    await runCycle({
+      instanceDir: dir,
+      now: new Date(now.getTime() + 3_600_000),
+      env,
+      dryRun: false,
+      deps: second.d,
+    });
+    expect(second.sent[0]?.subject).toContain("0 new matches");
+  });
+
+  it("a rate-limited provider is not called again in the same run", async () => {
+    let calls = 0;
+    const fetchCompany = async (c: { slug: string }) =>
+      c.slug === "exampleproduct" ? [raw(1), raw(2), raw(3)] : [];
+    const { d } = deps({
+      fetchCompany,
+      chatCall: async () => {
+        calls++;
+        return { status: 429, text: "" };
+      },
+    });
+    await runCycle({ instanceDir: instance(), now, env, dryRun: false, deps: d });
+    expect(calls).toBe(1);
+  });
+
+  it("over the LLM time budget, jobs are decided by rules and the digest is still sent", async () => {
+    let calls = 0;
+    const { d, sent } = deps({
+      chatCall: async () => {
+        calls++;
+        return { status: 200, text: facts };
+      },
+    });
+    await runCycle({ instanceDir: instance(), now, env, dryRun: false, deps: d, llmBudgetMs: 0 });
+    expect(calls).toBe(0);
+    expect(sent[0]?.text).toContain("not AI-checked");
+  });
+
   it("sends a digest with the matching job and records state", async () => {
     const dir = instance();
     const { d, sent } = deps();
@@ -104,11 +192,7 @@ describe("runCycle", () => {
 
   it("send failure leaves lastSuccessfulRun unchanged", async () => {
     const dir = instance();
-    saveState(
-      dir,
-      { lastSuccessfulRun: "2026-11-10T01:37:00.000Z", imapMaxUid: 0, jobs: {}, lastHealth: [] },
-      now,
-    );
+    saveState(dir, { ...emptyState(), lastSuccessfulRun: "2026-11-10T01:37:00.000Z" }, now);
     const { d } = deps({
       sendDigest: async () => {
         throw new Error("SMTP down");

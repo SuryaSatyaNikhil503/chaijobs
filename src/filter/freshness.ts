@@ -34,7 +34,13 @@ export function parseRelativePosted(text: string, now: Date): string | null {
   return new Date(now.getTime() - hours * HOUR).toISOString();
 }
 
-export function isFresh(job: Pick<Job, "postedAt" | "postedAtKind">, win: FreshnessWindow): boolean {
-  if (job.postedAtKind === "first-seen" || job.postedAt === null) return !win.firstRun;
+/** Undated jobs count only when first seen after the window start, so a backlog never floods a later digest. */
+export function isFresh(
+  job: Pick<Job, "postedAt" | "postedAtKind" | "firstSeenAt">,
+  win: FreshnessWindow,
+): boolean {
+  if (job.postedAtKind === "first-seen" || job.postedAt === null) {
+    return !win.firstRun && Date.parse(job.firstSeenAt) > win.from.getTime();
+  }
   return new Date(job.postedAt).getTime() >= win.from.getTime();
 }

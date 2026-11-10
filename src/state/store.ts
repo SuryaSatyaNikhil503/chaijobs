@@ -10,6 +10,8 @@ export interface JobRecord {
   verdict: Verdict;
   facts: JdFacts | null;
   digestedAt: string | null;
+  /** Last run that saw this job; pruning uses it so long-listed jobs are not re-announced. */
+  lastSeenAt?: string;
 }
 
 export interface SourceHealth {
@@ -24,6 +26,8 @@ export interface State {
   imapMaxUid: number;
   jobs: Record<string, JobRecord>;
   lastHealth: SourceHealth[];
+  /** company|title|city keys of digested jobs, so the same job from another source is not repeated. */
+  digestedKeys: Record<string, string>;
 }
 
 /** Written by the laptop app (Plan 3); the cloud cycle only reads it. */
@@ -35,7 +39,13 @@ export interface UserState {
 const PRUNE_DAYS = 30;
 const DAY = 86_400_000;
 
-export const emptyState = (): State => ({ lastSuccessfulRun: null, imapMaxUid: 0, jobs: {}, lastHealth: [] });
+export const emptyState = (): State => ({
+  lastSuccessfulRun: null,
+  imapMaxUid: 0,
+  jobs: {},
+  lastHealth: [],
+  digestedKeys: {},
+});
 
 const dataPath = (dir: string, file: string) => join(dir, "data", file);
 
@@ -58,9 +68,12 @@ export function loadState(dir: string): State {
 export function saveState(dir: string, s: State, now: Date = new Date()): void {
   const cutoff = now.getTime() - PRUNE_DAYS * DAY;
   const jobs = Object.fromEntries(
-    Object.entries(s.jobs).filter(([, r]) => Date.parse(r.job.firstSeenAt) >= cutoff),
+    Object.entries(s.jobs).filter(([, r]) => Date.parse(r.lastSeenAt ?? r.job.firstSeenAt) >= cutoff),
   );
-  writeJsonAtomic(dataPath(dir, "state.json"), { ...s, jobs });
+  const digestedKeys = Object.fromEntries(
+    Object.entries(s.digestedKeys ?? {}).filter(([, at]) => Date.parse(at) >= cutoff),
+  );
+  writeJsonAtomic(dataPath(dir, "state.json"), { ...s, jobs, digestedKeys });
 }
 
 const UserStateSchema = z.object({

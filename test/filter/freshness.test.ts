@@ -43,16 +43,29 @@ describe("isFresh", () => {
   const firstRun = { from: hoursAgo(24), firstRun: true };
   const later = { from: hoursAgo(24), firstRun: false };
 
+  const seenNow = now.toISOString();
   it("first-seen jobs are not fresh on the first run", () => {
-    expect(isFresh({ postedAt: null, postedAtKind: "first-seen" }, firstRun)).toBe(false);
+    expect(isFresh({ postedAt: null, postedAtKind: "first-seen", firstSeenAt: seenNow }, firstRun)).toBe(
+      false,
+    );
   });
 
-  it("first-seen jobs are fresh after the first run", () => {
-    expect(isFresh({ postedAt: null, postedAtKind: "first-seen" }, later)).toBe(true);
+  it("first-seen jobs first seen inside the window are fresh after the first run", () => {
+    expect(isFresh({ postedAt: null, postedAtKind: "first-seen", firstSeenAt: seenNow }, later)).toBe(true);
+  });
+
+  it("first-seen jobs first seen before the window are not fresh", () => {
+    const old = hoursAgo(30).toISOString();
+    expect(isFresh({ postedAt: null, postedAtKind: "first-seen", firstSeenAt: old }, later)).toBe(false);
   });
 
   it("posted inside the window is fresh, outside is not", () => {
-    expect(isFresh({ postedAt: hoursAgo(3).toISOString(), postedAtKind: "posted" }, later)).toBe(true);
-    expect(isFresh({ postedAt: hoursAgo(30).toISOString(), postedAtKind: "posted" }, later)).toBe(false);
+    const f = now.toISOString();
+    expect(
+      isFresh({ postedAt: hoursAgo(3).toISOString(), postedAtKind: "posted", firstSeenAt: f }, later),
+    ).toBe(true);
+    expect(
+      isFresh({ postedAt: hoursAgo(30).toISOString(), postedAtKind: "posted", firstSeenAt: f }, later),
+    ).toBe(false);
   });
 });

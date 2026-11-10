@@ -1,7 +1,7 @@
 import { loadConfig } from "../config/load.js";
 import type { Company } from "../config/schema.js";
 import type { Job, MatchVerdict, RawJob, RuleId, Verdict } from "../core/types.js";
-import { type RenderedDigest, renderDigest } from "../digest/render.js";
+import { MAX_MATCHES, type RenderedDigest, renderDigest } from "../digest/render.js";
 import { sendDigest } from "../digest/send.js";
 import { applyCheapRules } from "../filter/cheap.js";
 import { decide, rank } from "../filter/decide.js";
@@ -22,7 +22,7 @@ import {
   saveLlmCache,
   saveState,
 } from "../state/store.js";
-import { dedupe, toJob } from "./normalise.js";
+import { dedupe, fallbackKey, toJob } from "./normalise.js";
 
 export interface RunDeps {
   fetchCompany: (c: Company) => Promise<RawJob[]>;
@@ -53,6 +53,25 @@ export interface RunOptions {
   env: Record<string, string | undefined>;
   dryRun: boolean;
   deps?: Partial<RunDeps>;
+  /** After this long in LLM extraction, remaining jobs are decided by rules so the digest still goes out. */
+  llmBudgetMs?: number;
+}
+
+const FETCH_CONCURRENCY = 6;
+const DEFAULT_LLM_BUDGET_MS = 8 * 60_000;
+
+/** Runs tasks with a concurrency limit, returning results in input order. */
+async function pool<T>(items: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const out: T[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await (items[i] as () => Promise<T>)();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -70,21 +89,31 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
   // 1. Fetch every source; a failure is recorded, never fatal.
   const raws: RawJob[] = [];
   const health: SourceHealth[] = [];
-  const track = async (source: string, fn: () => Promise<RawJob[]>) => {
+  const attempt = async (source: string, fn: () => Promise<RawJob[]>) => {
     try {
       const jobs = await fn();
-      raws.push(...jobs);
-      health.push({ source, ok: true, count: jobs.length, error: null });
+      return { jobs, health: { source, ok: true, count: jobs.length, error: null } };
     } catch (e) {
-      health.push({ source, ok: false, count: 0, error: errorText(e) });
+      return { jobs: [] as RawJob[], health: { source, ok: false, count: 0, error: errorText(e) } };
     }
   };
+  const track = async (source: string, fn: () => Promise<RawJob[]>) => {
+    const r = await attempt(source, fn);
+    raws.push(...r.jobs);
+    health.push(r.health);
+  };
   const seen = new Set<string>();
-  for (const c of [...cfg.companies, ...user.extraCompanies]) {
-    const key = `${c.ats}:${c.slug}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    await track(key, () => deps.fetchCompany(c));
+  const companyTasks = [...cfg.companies, ...user.extraCompanies]
+    .filter((c) => {
+      const key = `${c.ats}:${c.slug}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((c) => () => attempt(`${c.ats}:${c.slug}`, () => deps.fetchCompany(c)));
+  for (const r of await pool(companyTasks, FETCH_CONCURRENCY)) {
+    raws.push(...r.jobs);
+    health.push(r.health);
   }
   if (cfg.serpapi.enabled) {
     const key = env.SERPAPI_KEY;
@@ -109,21 +138,37 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
   const matches: { job: Job; verdict: MatchVerdict }[] = [];
   const stubs: Job[] = [];
   let aiUnavailable = false;
+  const blockedProviders = new Set<string>();
+  const llmStart = Date.now();
+  const llmBudgetMs = opts.llmBudgetMs ?? DEFAULT_LLM_BUDGET_MS;
 
   for (const job of jobs) {
     const previous = state.jobs[job.id];
-    if (previous?.digestedAt || user.statuses[job.id]) {
+    if (previous?.digestedAt || user.statuses[job.id] || state.digestedKeys[fallbackKey(job)]) {
       skippedCounts["already-seen"] = (skippedCounts["already-seen"] ?? 0) + 1;
       continue;
     }
     if (previous) job.firstSeenAt = previous.job.firstSeenAt;
+    if (previous?.verdict.kind === "match") {
+      // Matched earlier but cut by the digest cap: carry it over instead of re-judging freshness.
+      state.jobs[job.id] = { ...previous, lastSeenAt: nowIso };
+      matches.push({ job: previous.job, verdict: previous.verdict });
+      continue;
+    }
     let verdict: Verdict | null = applyCheapRules(job, cfg.filters, win);
     let facts: JdFacts | null = null;
     if (!verdict && !job.isStub && job.descriptionText) {
       const cached = JdFacts.safeParse(cache.get(chainKey, job.descriptionText));
       if (cached.success) facts = cached.data;
+      else if (Date.now() - llmStart >= llmBudgetMs) aiUnavailable = true;
       else {
-        const r = await extractJdFacts(job.descriptionText, cfg.providers, env, deps.chatCall);
+        const r = await extractJdFacts(
+          job.descriptionText,
+          cfg.providers,
+          env,
+          deps.chatCall,
+          blockedProviders,
+        );
         if (r.ok) {
           facts = r.facts;
           cache.set(chainKey, job.descriptionText, r.facts);
@@ -131,7 +176,7 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
       }
     }
     verdict ??= decide(job, facts, cfg.skills, cfg.filters);
-    state.jobs[job.id] = { job, verdict, facts, digestedAt: null } satisfies JobRecord;
+    state.jobs[job.id] = { job, verdict, facts, digestedAt: null, lastSeenAt: nowIso } satisfies JobRecord;
     if (verdict.kind === "skip") skippedCounts[verdict.rule] = (skippedCounts[verdict.rule] ?? 0) + 1;
     else if (verdict.kind === "stub") stubs.push(job);
     else matches.push({ job, verdict });
@@ -147,8 +192,11 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
   if (!user_ || !pass) throw new Error("GMAIL_ADDRESS and GMAIL_APP_PASSWORD must be set to send the digest");
   await deps.sendDigest(digest, { user: user_, pass });
 
-  for (const { job } of ranked) (state.jobs[job.id] as JobRecord).digestedAt = nowIso;
-  for (const job of stubs) (state.jobs[job.id] as JobRecord).digestedAt = nowIso;
+  // Only what the email actually showed counts as digested; the rest rolls over to tomorrow.
+  for (const job of [...ranked.slice(0, MAX_MATCHES).map((m) => m.job), ...stubs]) {
+    (state.jobs[job.id] as JobRecord).digestedAt = nowIso;
+    state.digestedKeys[fallbackKey(job)] = nowIso;
+  }
   state.lastSuccessfulRun = nowIso;
   state.lastHealth = health;
   state.imapMaxUid = imapMaxUid;

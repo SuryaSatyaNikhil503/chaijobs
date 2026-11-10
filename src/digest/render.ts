@@ -16,7 +16,7 @@ export interface RenderedDigest {
   text: string;
 }
 
-const MAX_MATCHES = 25;
+export const MAX_MATCHES = 25;
 
 const esc = (s: string) =>
   s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");

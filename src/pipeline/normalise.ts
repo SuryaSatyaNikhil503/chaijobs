@@ -33,7 +33,7 @@ function canonicalUrl(url: string): string | null {
   }
 }
 
-function fallbackKey(job: Pick<Job, "companyKey" | "title" | "cities">): string {
+export function fallbackKey(job: Pick<Job, "companyKey" | "title" | "cities">): string {
   return `${job.companyKey}|${normTitle(job.title)}|${job.cities[0] ?? ""}`;
 }
 

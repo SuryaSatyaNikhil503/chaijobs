@@ -57,9 +57,13 @@ export async function extractJdFacts(
   chain: ProviderEntry[],
   env: Record<string, string | undefined>,
   call: ChatCall = openAiCompatibleCall,
+  /** Providers that failed earlier in this run (429, 5xx, timeout); skipped and added to. */
+  blocked: Set<string> = new Set(),
 ): Promise<ExtractResult> {
-  const usable = chain.filter((p) => env[p.apiKeyEnv]);
-  if (usable.length === 0) return { ok: false, reason: "no-providers" };
+  const configured = chain.filter((p) => env[p.apiKeyEnv]);
+  if (configured.length === 0) return { ok: false, reason: "no-providers" };
+  const usable = configured.filter((p) => !blocked.has(p.name));
+  if (usable.length === 0) return { ok: false, reason: "all-quota" };
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: text.slice(0, 24_000) },
@@ -72,9 +76,13 @@ export async function extractJdFacts(
       try {
         res = await call(p, key, messages);
       } catch {
+        blocked.add(p.name);
         break;
       }
-      if (res.status === 429 || res.status >= 500 || res.status < 200 || res.status >= 300) break;
+      if (res.status < 200 || res.status >= 300) {
+        if (res.status === 429 || res.status >= 500) blocked.add(p.name);
+        break;
+      }
       const facts = parseFacts(res.text);
       if (facts) return { ok: true, facts, provider: p.name };
       sawInvalid = true;

@@ -18,10 +18,11 @@ const WORD_NUMBERS: Record<string, number> = {
 
 const NUM = String.raw`(\d{1,2}|zero|one|two|three|four|five|six|seven|eight|nine|ten)`;
 const YEARS_RE = new RegExp(
-  String.raw`(minimum of|min\.?|at least|atleast)?\s*${NUM}\s*(\+|plus)?\s*(?:(?:-|–|to)\s*${NUM}\s*\+?)?\s*(?:years?|yrs?)\b(.{0,40})`,
+  String.raw`(minimum of|min\.?|at least|atleast)?\s*${NUM}\s*(\+|plus)?\s*(?:(?:-|–|to)\s*${NUM}\s*\+?)?\s*(?:years?|yrs?)\b(?=(.{0,40}))`,
   "gi",
 );
-const EXPERIENCE_AFTER = /^\s*(of\s+)?([a-z-]+\s+){0,2}(experience|exp\b|work)/i;
+const EXPERIENCE_AFTER = /^\s*((of\s+)?([a-z-]+\s+){0,2}(experience|exp\b|work)|in\s)/i;
+const MAX_PLAUSIBLE_YEARS = 15;
 
 const toNumber = (s: string) => WORD_NUMBERS[s.toLowerCase()] ?? Number(s);
 
@@ -29,12 +30,12 @@ const toNumber = (s: string) => WORD_NUMBERS[s.toLowerCase()] ?? Number(s);
 export function minYearsFromText(text: string): number | null {
   let min: number | null = null;
   for (const m of text.matchAll(YEARS_RE)) {
-    const [, prefix, first, plus, second, after = ""] = m;
+    const [, prefix, first, , second, after = ""] = m;
     if (!first) continue;
-    const qualified = Boolean(prefix || plus || second || EXPERIENCE_AFTER.test(after));
+    const qualified = Boolean(prefix || second || EXPERIENCE_AFTER.test(after));
     if (!qualified) continue;
     const n = toNumber(first);
-    if (Number.isFinite(n) && (min === null || n < min)) min = n;
+    if (Number.isFinite(n) && n <= MAX_PLAUSIBLE_YEARS && (min === null || n < min)) min = n;
   }
   return min;
 }
