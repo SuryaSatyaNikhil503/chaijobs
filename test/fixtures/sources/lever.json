@@ -1,0 +1,13 @@
+[
+  {
+    "id": "a1b2c3",
+    "text": "Software Engineer - Platform",
+    "hostedUrl": "https://jobs.lever.co/examplefin/a1b2c3",
+    "applyUrl": "https://jobs.lever.co/examplefin/a1b2c3/apply",
+    "createdAt": 1794290400000,
+    "categories": { "location": "hyderabad", "allLocations": ["hyderabad", "chennai"], "team": "Engineering" },
+    "descriptionPlain": "Build payment services in Java.",
+    "lists": [{ "text": "Requirements", "content": "<li>2+ years of backend experience</li><li>PostgreSQL</li>" }],
+    "additionalPlain": "Hybrid role."
+  }
+]
