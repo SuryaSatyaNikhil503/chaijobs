@@ -30,7 +30,24 @@ rules, and emails you a short ranked list at about 7 AM.
 
 ## Quickstart
 
-Coming with Plan 1's last task (`chaijobs init`).
+You need Node 24+, a GitHub account, and the GitHub CLI (`gh`).
+
+```bash
+npx --yes github:SuryaSatyaNikhil503/chaijobs init my-chaijobs   # creates your instance folder
+cd my-chaijobs
+git init -b main && git add -A && git commit -m "chore: my chaijobs instance"
+gh repo create my-chaijobs --private --source=. --push          # PRIVATE: it will hold your job history
+```
+
+Then follow `my-chaijobs/README.md`: add your secrets (Gmail app password and one free LLM key),
+put your skills in `config/skills.yml`, and press **Run workflow** once in the Actions tab.
+After that the digest arrives every morning at about 07:07 IST.
+
+Try it without sending anything:
+
+```bash
+npx --yes github:SuryaSatyaNikhil503/chaijobs run --instance my-chaijobs --dry-run
+```
 
 ## Contributing
 

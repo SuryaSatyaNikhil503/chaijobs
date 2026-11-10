@@ -92,6 +92,26 @@ describe("applyCheapRules", () => {
     expect(applyCheapRules(job({ descriptionText: null }), filters, win)).toBeNull();
   });
 
+  it.each(["Fraud Operations Associate", "Analyst - RMG", "Account Executive, SLED"])(
+    "non-engineering title %s skipped with rule title-excluded",
+    (title) => {
+      expect(applyCheapRules(job({ title }), filters, win)).toMatchObject({
+        kind: "skip",
+        rule: "title-excluded",
+      });
+    },
+  );
+
+  it.each([
+    "SDE 2",
+    "Member of Technical Staff",
+    "Java Developer",
+    "Software Engineer II",
+    "Backend Architect",
+  ])("engineering title %s passes", (title) => {
+    expect(applyCheapRules(job({ title }), filters, win)).toBeNull();
+  });
+
   it("title words match whole words only", () => {
     expect(applyCheapRules(job({ title: "Backend Engineer, Payments Squad" }), filters, win)).toBeNull();
   });

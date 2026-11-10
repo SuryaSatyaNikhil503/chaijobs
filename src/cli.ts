@@ -2,15 +2,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Command } from "commander";
-import { runCycle } from "./pipeline/run.js";
+import { initInstance } from "./commands/init.js";
+import { verifyCompanies } from "./commands/verifyCompanies.js";
+import { loadConfig } from "./config/load.js";
+import { defaultDeps, runCycle } from "./pipeline/run.js";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
   version: string;
-};
-
-const notImplemented = () => {
-  console.error("not implemented");
-  process.exitCode = 1;
 };
 
 const program = new Command("chaijobs")
@@ -32,12 +30,26 @@ program
     if (opts.dryRun) console.log(digest.text);
     else console.log(sent ? `Digest sent: ${digest.subject}` : "Digest not sent");
   });
-program.command("init").description("Create a private instance folder").action(notImplemented);
+program
+  .command("init <dir>")
+  .description("Create your private instance folder from the template")
+  .action((dir: string) => {
+    initInstance(resolve(dir));
+    console.log(
+      `Created ${dir}. Next: push it as a PRIVATE GitHub repo and add your secrets (see its README).`,
+    );
+  });
 program
   .command("companies")
   .description("Company watch-list tools")
   .command("verify")
   .description("Check every configured company board is live")
-  .action(notImplemented);
+  .requiredOption("--instance <dir>", "path to your instance folder")
+  .action(async (opts: { instance: string }) => {
+    const { companies } = loadConfig(resolve(opts.instance));
+    const results = await verifyCompanies(companies, defaultDeps.fetchCompany);
+    for (const r of results) console.log(`${r.ok ? "OK  " : "FAIL"} ${r.company}  ${r.detail}`);
+    if (results.some((r) => !r.ok)) process.exitCode = 1;
+  });
 
 await program.parseAsync();

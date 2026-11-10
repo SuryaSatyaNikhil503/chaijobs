@@ -1,0 +1,6 @@
+# Your skip rules. Every skipped job is logged with the rule that skipped it.
+maxMinYears: 5 # skip jobs asking for 5+ years minimum
+stretchMinYears: 4 # jobs asking for exactly 4 years are shown as "stretch"
+skipRoleTypes: [frontend, mobile, devops, qa, data]
+allowRemoteIndia: true
+windowCapHours: 36

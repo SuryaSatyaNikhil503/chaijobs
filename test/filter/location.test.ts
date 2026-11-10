@@ -27,7 +27,14 @@ describe("normaliseLocation", () => {
     expect(normaliseLocation(["Vishakhapatnam"]).cities).toEqual(["Visakhapatnam"]);
   });
 
-  it("plain Remote with no country counts as remote India", () => {
-    expect(normaliseLocation(["Remote"]).remoteIndia).toBe(true);
+  it("plain Remote with no country does not count as remote India", () => {
+    expect(normaliseLocation(["Remote"]).remoteIndia).toBe(false);
+    expect(normaliseLocation(["Remote - Maryland"]).remoteIndia).toBe(false);
+  });
+
+  it("remote anywhere or worldwide counts as remote India", () => {
+    expect(normaliseLocation(["Remote - Anywhere"]).remoteIndia).toBe(true);
+    expect(normaliseLocation(["Worldwide (Remote)"]).remoteIndia).toBe(true);
+    expect(normaliseLocation(["Remote, IN"]).remoteIndia).toBe(true);
   });
 });

@@ -56,6 +56,9 @@ export function applyCheapRules(job: Job, f: Filters, win: FreshnessWindow): Ver
   if (!isFresh(job, win)) {
     return { kind: "skip", rule: "stale", detail: `posted ${job.postedAt ?? "unknown"}` };
   }
+  if (!titleHit(job.title, f.titleInclude) && !/\bsde[-\s]?\d/i.test(job.title)) {
+    return { kind: "skip", rule: "title-excluded", detail: "not an engineering title" };
+  }
   const hit = titleHit(job.title, f.titleExclude);
   if (hit) return { kind: "skip", rule: "title-excluded", detail: `title contains "${hit}"` };
   if (job.descriptionText) {

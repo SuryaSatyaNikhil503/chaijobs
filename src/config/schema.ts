@@ -29,7 +29,22 @@ export const DEFAULT_TITLE_EXCLUDE = [
   "director",
 ];
 
+export const DEFAULT_TITLE_INCLUDE = [
+  "engineer",
+  "engineering",
+  "developer",
+  "sde",
+  "programmer",
+  "architect",
+  "member of technical staff",
+  "mts",
+  "backend",
+  "software",
+  "platform",
+];
+
 export const FiltersSchema = z.object({
+  titleInclude: z.array(z.string()).default(DEFAULT_TITLE_INCLUDE),
   maxMinYears: z.number().int().positive().default(5),
   stretchMinYears: z.number().int().nonnegative().default(4),
   skipRoleTypes: z.array(z.string()).default(["frontend", "mobile", "devops", "qa", "data"]),
