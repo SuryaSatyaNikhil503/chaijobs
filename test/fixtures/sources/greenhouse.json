@@ -1,0 +1,15 @@
+{
+  "jobs": [
+    {
+      "id": 1001,
+      "title": "Backend Engineer II",
+      "absolute_url": "https://boards.greenhouse.io/exampleproduct/jobs/1001",
+      "company_name": "Example Product Co",
+      "first_published": "2026-11-10T20:00:00-04:00",
+      "updated_at": "2026-11-10T23:00:00-04:00",
+      "location": { "name": "Bengaluru, India" },
+      "content": "&lt;p&gt;We need &lt;strong&gt;3-5 years&lt;/strong&gt; of Java and Spring Boot.&lt;/p&gt;"
+    }
+  ],
+  "meta": { "total": 1 }
+}

@@ -67,6 +67,14 @@ CI runs the same on Ubuntu and Windows, plus a fresh-install smoke test (`npm pa
 8. **State ownership:** the cycle writes `data/state.json`. The laptop app (a later plan) writes
    `data/user-state.json`. Never write the other side's file.
 9. Inject network and time (`Fetcher`, `ChatCall`, `now: Date`) so tests never touch the network.
+10. **Supply chain, for the instance workflow (`template/instance/.github/workflows/daily.yml`):**
+    - Pin every action, and chaijobs itself, to a full commit SHA. Never use a tag.
+    - Install with `npm ci --ignore-scripts` in a step that has **no secrets**.
+    - Only the run step gets secrets.
+11. **Compact state:** keep full records only for matches and stubs. Skipped jobs go in the compact `seen` map.
+    Write one record per line. A real run must leave `state.json` around 1 MB, not tens of MB.
+12. **LLM output is untrusted:** `groundFacts` keeps only skills and emails that appear in the JD text.
+    A years figure stated in the text overrides the model's.
 
 ## Tests and fixtures
 

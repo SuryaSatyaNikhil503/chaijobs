@@ -1,0 +1,5 @@
+skills:
+  - name: Java
+    aliases: [java 21, java 8]
+  - name: Spring Boot
+    aliases: [springboot, spring-boot]

@@ -1,0 +1,16 @@
+{
+  "search_metadata": { "status": "Success" },
+  "jobs_results": [
+    {
+      "title": "Java Backend Developer",
+      "company_name": "Example Services Ltd",
+      "location": "Hyderabad, Telangana, India",
+      "via": "LinkedIn",
+      "share_link": "https://www.google.com/search?ibp=htl;jobs&q=example#share",
+      "description": "Looking for 2-4 years in Java, Spring Boot and microservices.",
+      "job_id": "eyJqb2JfdGl0bGUiOiJleGFtcGxlIn0=",
+      "detected_extensions": { "posted_at": "5 hours ago", "schedule_type": "Full-time" },
+      "apply_options": [{ "title": "LinkedIn", "link": "https://www.linkedin.com/jobs/view/123?utm_source=google" }]
+    }
+  ]
+}

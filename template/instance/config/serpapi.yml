@@ -1,0 +1,7 @@
+# Google job search through SerpApi (optional). Add SERPAPI_KEY to your repo secrets to turn it on.
+# Each query costs one search from your SerpApi quota per day.
+enabled: true
+queries:
+  - backend developer Hyderabad
+  - java developer Bengaluru
+  - backend engineer Chennai

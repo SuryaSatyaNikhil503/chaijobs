@@ -1,0 +1,38 @@
+# Companies whose public job boards chaijobs reads every day.
+# Each entry was verified live with `chaijobs companies verify` (2026-11-10).
+# Service companies (TCS, Infosys, ...) mostly use Workday or their own portals: coming in a later release.
+companies:
+  - { name: Groww, type: product, ats: greenhouse, slug: groww }
+  - { name: Rubrik, type: product, ats: greenhouse, slug: rubrik }
+  - { name: Databricks, type: product, ats: greenhouse, slug: databricks }
+  - { name: Stripe, type: product, ats: greenhouse, slug: stripe }
+  - { name: Cloudflare, type: product, ats: greenhouse, slug: cloudflare }
+  - { name: MongoDB, type: product, ats: greenhouse, slug: mongodb }
+  - { name: Okta, type: product, ats: greenhouse, slug: okta }
+  - { name: Twilio, type: product, ats: greenhouse, slug: twilio }
+  - { name: Datadog, type: product, ats: greenhouse, slug: datadog }
+  - { name: Razorpay, type: product, ats: greenhouse, slug: razorpaysoftwareprivatelimited }
+  - { name: Druva, type: product, ats: greenhouse, slug: druva }
+  - { name: Zscaler, type: product, ats: greenhouse, slug: zscaler }
+  - { name: Elastic, type: product, ats: greenhouse, slug: elastic }
+  - { name: GitLab, type: product, ats: greenhouse, slug: gitlab }
+  - { name: Airbnb, type: product, ats: greenhouse, slug: airbnb }
+  - { name: Coinbase, type: product, ats: greenhouse, slug: coinbase }
+  - { name: Toast, type: product, ats: greenhouse, slug: toast }
+  - { name: Samsara, type: product, ats: greenhouse, slug: samsara }
+  - { name: Pure Storage, type: product, ats: greenhouse, slug: purestorage }
+  - { name: HighRadius, type: product, ats: greenhouse, slug: highradius }
+  - { name: Zuora, type: product, ats: greenhouse, slug: zuora }
+  - { name: CRED, type: product, ats: lever, slug: cred }
+  - { name: Zeta, type: product, ats: lever, slug: zeta }
+  - { name: Meesho, type: product, ats: lever, slug: meesho }
+  - { name: Paytm, type: product, ats: lever, slug: paytm }
+  - { name: FamPay, type: startup, ats: lever, slug: fampay }
+  - { name: Sarvam, type: startup, ats: ashby, slug: sarvam }
+  - { name: Composio, type: startup, ats: ashby, slug: composio }
+  - { name: Ramp, type: product, ats: ashby, slug: ramp }
+  - { name: PostHog, type: startup, ats: ashby, slug: posthog }
+  - { name: Supabase, type: startup, ats: ashby, slug: supabase }
+  - { name: ClickHouse, type: product, ats: ashby, slug: clickhouse }
+  - { name: OpenAI, type: product, ats: ashby, slug: openai }
+  - { name: Notion, type: product, ats: ashby, slug: notion }

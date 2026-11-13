@@ -1,0 +1,5 @@
+companies:
+  - name: Bad Co
+    type: product
+    ats: myspace
+    slug: bad

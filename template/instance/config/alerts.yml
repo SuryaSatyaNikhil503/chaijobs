@@ -1,0 +1,5 @@
+# Job-alert senders read from your inbox (read-only, these senders only).
+senders:
+  alert-naukri: [naukrialerts@naukri.com]
+  alert-indeed: [donotreply@jobalert.indeed.com, donotreply@match.indeed.com]
+  alert-linkedin: [jobalerts-noreply@linkedin.com, jobs-noreply@linkedin.com]

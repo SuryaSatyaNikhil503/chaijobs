@@ -1,0 +1,14 @@
+# chaijobs on-time trigger (Cloudflare Workers, free plan). Deploy from this folder:
+#   npx --yes wrangler@4.156.0 login
+#   npx --yes wrangler@4.156.0 secret put GITHUB_TOKEN     # paste the fine-grained token when asked
+#   npx --yes wrangler@4.156.0 deploy
+name = "chaijobs-trigger"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+workers_dev = false # no public URL: the worker only runs on its cron
+
+[triggers]
+crons = ["37 1 * * *"] # 01:37 UTC = 07:07 IST (Cloudflare crons are UTC)
+
+[vars]
+GITHUB_REPO = "__GITHUB_REPO__" # set to owner/repo of your PRIVATE instance repo

@@ -1,0 +1,9 @@
+companies:
+  - name: Example Product Co
+    type: product
+    ats: greenhouse
+    slug: exampleproduct
+  - name: Broken Co
+    type: startup
+    ats: lever
+    slug: brokenco

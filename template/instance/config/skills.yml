@@ -1,0 +1,17 @@
+# SAMPLE skill list. Replace with your own skills (names + aliases only).
+# The filter skips a job when none of its must-have skills appear here.
+skills:
+  - { name: Java, aliases: [java 8, java 11, java 17, java 21] }
+  - { name: Spring Boot, aliases: [springboot, spring-boot, spring] }
+  - { name: Microservices, aliases: [] }
+  - { name: REST APIs, aliases: [rest, restful apis, rest api] }
+  - { name: PostgreSQL, aliases: [postgres] }
+  - { name: MySQL, aliases: [] }
+  - { name: Redis, aliases: [] }
+  - { name: AWS, aliases: [amazon web services, lambda, s3, ec2, sqs, sns] }
+  - { name: Docker, aliases: [] }
+  - { name: Kafka, aliases: [apache kafka] }
+  - { name: Python, aliases: [] }
+  - { name: Node.js, aliases: [nodejs, node] }
+  - { name: SQL, aliases: [] }
+  - { name: Git, aliases: [] }

@@ -1,0 +1,5 @@
+providers:
+  - name: groq
+    baseUrl: https://api.groq.com/openai/v1
+    model: example-model
+    apiKeyEnv: GROQ_KEY
