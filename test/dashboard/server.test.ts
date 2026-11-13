@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync } from "node:fs";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -134,6 +134,56 @@ describe("dashboard server", () => {
     expect((await post("nope", "applied")).status).toBe(404);
     expect((await post("a", "hired-by-magic")).status).toBe(400);
     expect(existsSync(join(dir, "data", "user-state.json"))).toBe(false);
+  });
+
+  it("saving works when the dashboard is opened as localhost", async () => {
+    const { url, dir } = await start();
+    const local = url.replace("127.0.0.1", "localhost");
+    const csrf = csrfFrom(await (await fetch(local)).text());
+    const res = await fetch(`${local}/job/a/status`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: local },
+      body: form({ csrf, status: "interview" }),
+      redirect: "manual",
+    });
+    expect(res.status).toBe(303);
+    expect(loadUserState(dir).statuses).toEqual({ a: "interview" });
+  });
+
+  it("job page shows the sync note after a save", async () => {
+    const { url } = await start();
+    const csrf = csrfFrom(await (await fetch(url)).text());
+    await fetch(`${url}/job/a/status`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form({ csrf, status: "applied" }),
+      redirect: "manual",
+    });
+    expect(await (await fetch(`${url}/job/a`)).text()).toContain("Sync is off");
+  });
+
+  it("a save responds at once while the push runs in the background", async () => {
+    const dir = instance();
+    let releasePush: () => void = () => {};
+    const git = async (args: string[], cwd: string) => {
+      if (args[0] === "rev-parse") return realpathSync(cwd);
+      if (args[0] === "push") await new Promise<void>((r) => (releasePush = r));
+      return "";
+    };
+    const d = await startDashboard({ instanceDir: dir, port: 0, sync: true, now: () => now, git });
+    close = d.close;
+    const csrf = csrfFrom(await (await fetch(d.url)).text());
+    const started = Date.now();
+    const res = await fetch(`${d.url}/job/a/status`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form({ csrf, status: "applied" }),
+      redirect: "manual",
+    });
+    expect(res.status).toBe(303);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(await (await fetch(`${d.url}/job/a`)).text()).toContain("Saving to your instance repo");
+    releasePush();
   });
 
   it("serves the stylesheet and 404s unknown paths", async () => {

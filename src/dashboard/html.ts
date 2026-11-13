@@ -154,7 +154,12 @@ ${counts ? `<p class="muted">Your applications so far: ${esc(counts)}.</p>` : ""
   );
 }
 
-export function renderJob(d: JobRow & { history: StatusEvent[] }, csrf: string, now: Date): string {
+export function renderJob(
+  d: JobRow & { history: StatusEvent[] },
+  csrf: string,
+  now: Date,
+  syncNote: string | null = null,
+): string {
   const f = d.facts;
   const facts = f
     ? `<dl class="facts"><dt>Experience</dt><dd>${f.minYears ?? "?"}${f.maxYears ? `–${f.maxYears}` : "+"} years</dd>
@@ -168,6 +173,7 @@ export function renderJob(d: JobRow & { history: StatusEvent[] }, csrf: string, 
   return page(
     d.job.title,
     `<p><a href="/">Back to today</a></p>
+${syncNote ? `<p class="note">${esc(syncNote)}</p>` : ""}
 <h1 class="headline">${esc(d.job.title)}</h1>
 <p class="meta">${esc(d.job.company)}, ${where(d.job)}, ${age(d.job, now)}. ${externalLink(d.job, "Open the posting")}</p>
 ${skillsLine(d)}

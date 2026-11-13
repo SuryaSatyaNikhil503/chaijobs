@@ -46,12 +46,34 @@ describe.skipIf(process.platform === "win32")("instance sync", () => {
     expect(git(check, "ls-files", "data")).toBe("data/state.json\ndata/user-state.json");
   });
 
-  it("pull brings in the cloud's latest state", () => {
+  it("commits only user-state, never other staged files", async () => {
+    const { root, laptop } = setup();
+    writeFileSync(join(laptop, "notes.txt"), "private\n");
+    git(laptop, "add", "notes.txt");
+    writeFileSync(join(laptop, "data", "user-state.json"), '{"statuses":{}}\n');
+    expect((await pushUserState(laptop, undefined, noWait)).synced).toBe(true);
+    const check = join(root, "check2");
+    git(root, "clone", join(root, "origin.git"), check);
+    expect(git(check, "ls-files")).not.toContain("notes.txt");
+  });
+
+  it("pushes even when the clone has unrelated unstaged edits", async () => {
+    const { seed, laptop } = setup();
+    writeFileSync(join(seed, "data", "state.json"), '{"cloud":3}\n');
+    git(seed, "commit", "-am", "cloud run");
+    git(seed, "push", "origin", "main");
+    writeFileSync(join(laptop, "data", "state.json"), '{"local-edit":true}\n');
+    writeFileSync(join(laptop, "data", "user-state.json"), '{"statuses":{}}\n');
+    expect((await pushUserState(laptop, undefined, noWait)).synced).toBe(true);
+    expect(git(laptop, "status", "--porcelain")).not.toContain("rebase");
+  });
+
+  it("pull brings in the cloud's latest state", async () => {
     const { seed, laptop } = setup();
     writeFileSync(join(seed, "data", "state.json"), '{"cloud":2}\n');
     git(seed, "commit", "-am", "cloud run");
     git(seed, "push", "origin", "main");
-    expect(pullInstance(laptop).synced).toBe(true);
+    expect((await pullInstance(laptop)).synced).toBe(true);
     expect(git(laptop, "log", "-1", "--format=%s")).toBe("cloud run");
   });
 
@@ -64,7 +86,7 @@ describe.skipIf(process.platform === "win32")("instance sync", () => {
 describe("not a git clone", () => {
   it("reports local-only and does not throw", async () => {
     const d = mkdtempSync(join(tmpdir(), "chaijobs-nogit-"));
-    expect(pullInstance(d)).toEqual({
+    expect(await pullInstance(d)).toEqual({
       synced: false,
       note: "not a git clone: changes stay on this computer",
     });

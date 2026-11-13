@@ -1,24 +1,28 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
-export type Git = (args: string[], cwd: string) => string;
+/** Async so a slow network push never blocks the dashboard's event loop. */
+export type Git = (args: string[], cwd: string) => Promise<string>;
 
 export interface SyncResult {
   synced: boolean;
   note: string;
 }
 
-const defaultGit: Git = (args, cwd) =>
-  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const run = promisify(execFile);
+const defaultGit: Git = async (args, cwd) =>
+  (await run("git", args, { cwd, encoding: "utf8" })).stdout.trim();
 
 const LOCAL_ONLY: SyncResult = { synced: false, note: "not a git clone: changes stay on this computer" };
+const USER_STATE = "data/user-state.json";
 const BACKOFF_MS = [2_000, 5_000];
 
 /** True only when `dir` is itself the top of a git work tree (not a folder nested inside another repo). */
-function isInstanceClone(dir: string, git: Git): boolean {
+async function isInstanceClone(dir: string, git: Git): Promise<boolean> {
   try {
-    return realpathSync(git(["rev-parse", "--show-toplevel"], dir)) === realpathSync(dir);
+    return realpathSync(await git(["rev-parse", "--show-toplevel"], dir)) === realpathSync(dir);
   } catch {
     return false;
   }
@@ -28,42 +32,45 @@ const errorText = (e: unknown) =>
   e instanceof Error ? (e.message.split("\n")[0] ?? "git failed") : String(e);
 
 /** Brings in the cloud run's latest state.json before the dashboard reads it. Never throws. */
-export function pullInstance(dir: string, git: Git = defaultGit): SyncResult {
-  if (!isInstanceClone(dir, git)) return LOCAL_ONLY;
+export async function pullInstance(dir: string, git: Git = defaultGit): Promise<SyncResult> {
+  if (!(await isInstanceClone(dir, git))) return LOCAL_ONLY;
   try {
-    git(["pull", "--rebase", "--autostash", "--quiet"], dir);
+    await git(["pull", "--rebase", "--autostash", "--quiet"], dir);
     return { synced: true, note: "up to date with your instance repo" };
   } catch (e) {
+    await git(["rebase", "--abort"], dir).catch(() => "");
     return { synced: false, note: `could not pull: ${errorText(e)}` };
   }
 }
 
 /**
- * Commits data/user-state.json and pushes it. The cloud run writes other files (state.json), so a rebase
- * onto its latest push is always clean; retried because both sides may push at the same moment. Never throws.
+ * Commits ONLY data/user-state.json (never anything else the user staged) and pushes it. The cloud run writes
+ * other files, so rebasing onto its latest push is clean; --autostash keeps unrelated local edits out of the way,
+ * and a failed rebase is aborted so the clone is never left mid-rebase. Retried; never throws.
  */
 export async function pushUserState(
   dir: string,
   git: Git = defaultGit,
   wait: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<SyncResult> {
-  if (!isInstanceClone(dir, git)) return LOCAL_ONLY;
-  if (!existsSync(join(dir, "data", "user-state.json"))) return { synced: true, note: "nothing to save yet" };
+  if (!(await isInstanceClone(dir, git))) return LOCAL_ONLY;
+  if (!existsSync(join(dir, USER_STATE))) return { synced: true, note: "nothing to save yet" };
   try {
-    git(["add", "--", "data/user-state.json"], dir);
-    const staged = git(["diff", "--cached", "--name-only"], dir);
-    if (staged) git(["commit", "--quiet", "-m", "chore: update job statuses"], dir);
+    await git(["add", "--", USER_STATE], dir);
+    const staged = await git(["diff", "--cached", "--name-only", "--", USER_STATE], dir);
+    if (staged) await git(["commit", "--quiet", "-m", "chore: update job statuses", "--", USER_STATE], dir);
   } catch (e) {
     return { synced: false, note: `could not commit: ${errorText(e)}` };
   }
   let last = "";
   for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
     try {
-      git(["pull", "--rebase", "--quiet"], dir);
-      git(["push", "--quiet"], dir);
+      await git(["pull", "--rebase", "--autostash", "--quiet"], dir);
+      await git(["push", "--quiet"], dir);
       return { synced: true, note: "saved to your instance repo" };
     } catch (e) {
       last = errorText(e);
+      await git(["rebase", "--abort"], dir).catch(() => "");
     }
     const backoff = BACKOFF_MS[attempt];
     if (backoff !== undefined) await wait(backoff);

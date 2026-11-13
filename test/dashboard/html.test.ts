@@ -114,6 +114,12 @@ describe("dashboard html", () => {
     expect(renderHome(view(), "t", null, now)).toMatch(/<label class="sr-only" for="s-j1">Status<\/label>/);
   });
 
+  it("job page shows the sync note", () => {
+    expect(renderJob({ ...row, history: [] }, "t", now, "saved here, but push failed: offline")).toContain(
+      "push failed: offline",
+    );
+  });
+
   it("shows the sync note when present", () => {
     expect(renderHome(view(), "t", "saved here, but push failed: offline", now)).toContain(
       "push failed: offline",

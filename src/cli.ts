@@ -85,8 +85,14 @@ program
   .option("--no-sync", "do not pull from or push to the instance repo")
   .action(async (opts: { instance: string; port: number; sync: boolean }) => {
     const dir = resolve(opts.instance);
-    if (opts.sync) console.log(pullInstance(dir).note);
-    const { url } = await startDashboard({ instanceDir: dir, port: opts.port, sync: opts.sync });
+    const pulled = opts.sync ? (await pullInstance(dir)).note : null;
+    if (pulled) console.log(pulled);
+    const { url } = await startDashboard({
+      instanceDir: dir,
+      port: opts.port,
+      sync: opts.sync,
+      initialSyncNote: pulled,
+    });
     console.log(`chaijobs dashboard: ${url}  (Ctrl+C to stop)`);
   });
 

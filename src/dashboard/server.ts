@@ -14,6 +14,8 @@ export interface DashboardOptions {
   sync: boolean;
   now?: () => Date;
   git?: Git;
+  /** Result of the startup pull, shown until the first save. */
+  initialSyncNote?: string | null;
 }
 
 const HEADERS = {
@@ -56,9 +58,14 @@ export async function startDashboard(
 ): Promise<{ url: string; close(): Promise<void> }> {
   const csrf = randomBytes(24).toString("base64url");
   const now = opts.now ?? (() => new Date());
-  let syncNote: string | null = opts.sync ? null : "Sync is off: status changes stay on this computer.";
+  let syncNote: string | null = opts.sync
+    ? (opts.initialSyncNote ?? null)
+    : "Sync is off: status changes stay on this computer.";
   let origin = "";
   let allowedHosts = new Set<string>();
+  let allowedOrigins = new Set<string>();
+  // Pushes run one at a time in the background, so a save answers at once and never blocks other requests.
+  let pushQueue: Promise<void> = Promise.resolve();
 
   const server = createServer(async (req, res) => {
     try {
@@ -80,12 +87,12 @@ export async function startDashboard(
         const id = decodeURIComponent(jobPath[1] ?? "");
         if (req.method === "GET" && !jobPath[2]) {
           const d = jobDetail(loadState(opts.instanceDir), loadUserState(opts.instanceDir), id);
-          return d ? send(res, 200, renderJob(d, csrf, now())) : send(res, 404, renderNotFound());
+          return d ? send(res, 200, renderJob(d, csrf, now(), syncNote)) : send(res, 404, renderNotFound());
         }
         if (req.method === "POST" && jobPath[2]) {
           // CSRF guard: other sites can make the browser POST here, but cannot read our token.
           const reqOrigin = req.headers.origin;
-          if (reqOrigin && reqOrigin !== origin) return send(res, 403, "Forbidden", "text/plain");
+          if (reqOrigin && !allowedOrigins.has(reqOrigin)) return send(res, 403, "Forbidden", "text/plain");
           const form = await readForm(req);
           if (!form || !sameToken(form.get("csrf") ?? "", csrf))
             return send(res, 403, "Forbidden", "text/plain");
@@ -96,7 +103,12 @@ export async function startDashboard(
           if (!(JOB_STATUSES as readonly string[]).includes(status))
             return send(res, 400, "Unknown status", "text/plain");
           recordStatus(opts.instanceDir, id, status as JobStatus, now());
-          if (opts.sync) syncNote = (await pushUserState(opts.instanceDir, opts.git)).note;
+          if (opts.sync) {
+            syncNote = "Saving to your instance repo…";
+            pushQueue = pushQueue.then(async () => {
+              syncNote = (await pushUserState(opts.instanceDir, opts.git)).note;
+            });
+          }
           return send(res, 303, "", "text/plain", { Location: `/job/${encodeURIComponent(id)}` });
         }
       }
@@ -118,8 +130,12 @@ export async function startDashboard(
   const { port } = server.address() as AddressInfo;
   origin = `http://127.0.0.1:${port}`;
   allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
+  allowedOrigins = new Set([...allowedHosts].map((h) => `http://${h}`));
   return {
     url: origin,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: async () => {
+      await pushQueue;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
   };
 }

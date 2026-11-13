@@ -145,10 +145,17 @@ export function saveState(dir: string, s: State, now: Date = new Date()): void {
   );
 }
 
+const StatusEventSchema = z.object({ id: z.string(), status: z.enum(JOB_STATUSES), at: z.string() });
+
 const UserStateSchema = z.object({
   statuses: z.record(z.string(), z.string()).default({}),
   extraCompanies: z.array(CompanySchema).default([]),
-  history: z.array(z.object({ id: z.string(), status: z.enum(JOB_STATUSES), at: z.string() })).default([]),
+  // Lenient on purpose: a status this version doesn't know (newer dashboard, hand edit) is dropped, never fatal,
+  // because the cloud run reads this file and must still send the digest.
+  history: z
+    .array(z.unknown())
+    .default([])
+    .transform((events) => events.filter((e): e is StatusEvent => StatusEventSchema.safeParse(e).success)),
 });
 
 export function loadUserState(dir: string): UserState {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -35,6 +35,15 @@ describe("recordStatus", () => {
         .split("\n")
         .filter((l) => l.includes('"at"')),
     ).toHaveLength(1);
+  });
+
+  it("an unknown status in history never breaks the cloud loader", () => {
+    const d = dir();
+    recordStatus(d, "job1", "applied", t1);
+    const path = join(d, "data", "user-state.json");
+    writeFileSync(path, readFileSync(path, "utf8").replace('"status":"applied"', '"status":"ghosted"'));
+    expect(() => loadUserState(d)).not.toThrow();
+    expect(loadUserState(d).history).toEqual([]);
   });
 
   it("the cloud loader still reads statuses from a file that has history", () => {
