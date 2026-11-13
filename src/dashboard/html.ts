@@ -38,6 +38,17 @@ function externalLink(job: Job, label: string): string {
     : esc(label);
 }
 
+/** What each skip rule means, in the user's words. */
+const RULE_LABEL: Record<string, string> = {
+  location: "Outside your cities",
+  stale: "Posted too long ago",
+  "title-excluded": "Title not a fit",
+  "min-years": "Asks for more experience",
+  "role-type": "Not a backend role",
+  "core-stack": "Core stack you don't list",
+  "already-seen": "Already shown before",
+};
+
 const STATUS_LABEL: Record<string, string> = {
   applied: "Applied",
   skipped: "Skipped",
@@ -57,7 +68,7 @@ function statusForm(r: JobRow, csrf: string): string {
     .join("");
   return `<form class="status" method="post" action="/job/${encodeURIComponent(r.id)}/status">
 <input type="hidden" name="csrf" value="${esc(csrf)}">
-<label class="muted" for="s-${esc(r.id)}">Status</label>
+<label class="sr-only" for="s-${esc(r.id)}">Status</label>
 <select id="s-${esc(r.id)}" name="status" required>${options}</select>
 <button type="submit">Save status</button></form>`;
 }
@@ -116,7 +127,7 @@ export function renderHome(v: DashboardView, csrf: string, syncNote: string | nu
     ? v.filtered
         .map(
           (g) =>
-            `<details><summary>Filtered by ${esc(g.rule)} (${g.count})</summary><ul class="plain">${g.recent
+            `<details><summary>${esc(RULE_LABEL[g.rule] ?? g.rule)} (${g.count})</summary><ul class="plain">${g.recent
               .map((x) => `<li>${esc(x.title)} <span class="muted">${esc(x.company)}</span></li>`)
               .join("")}</ul>${
               g.untitled
@@ -137,7 +148,7 @@ export function renderHome(v: DashboardView, csrf: string, syncNote: string | nu
     `<h1 class="headline">${esc(headline)}</h1><p class="meta">${meta}</p>
 ${syncNote ? `<p class="note">${esc(syncNote)}</p>` : ""}
 <h2>Matches</h2>${matches}
-${needsJd}${filtered}
+${needsJd}${filtered ? `<h2>Filtered out</h2>${filtered}` : ""}
 ${counts ? `<p class="muted">Your applications so far: ${esc(counts)}.</p>` : ""}
 <p class="muted"><a href="/?show=all">Show skipped and withdrawn jobs too</a></p>`,
   );

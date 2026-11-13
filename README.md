@@ -61,6 +61,24 @@ Try it without sending anything:
 npx --yes github:SuryaSatyaNikhil503/chaijobs run --instance my-chaijobs --dry-run
 ```
 
+## Dashboard
+
+On your laptop, clone your private instance repo once, then run:
+
+```bash
+git clone https://github.com/<you>/my-chaijobs.git
+npx --yes github:SuryaSatyaNikhil503/chaijobs#v0.2.0 dashboard --instance my-chaijobs
+```
+
+It opens on `http://127.0.0.1:4567` and works only on your own computer. You'll see:
+
+- today's matches, with matched and missing skills;
+- jobs that need a full description;
+- why other jobs were filtered out;
+- source health.
+
+Marking a job applied, skipped and so on saves it to your instance repo, so the morning email never shows that job again.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Licence: [MIT](LICENSE).

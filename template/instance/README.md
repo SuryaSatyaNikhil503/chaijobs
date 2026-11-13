@@ -36,3 +36,14 @@ API. GitHub's schedule stays as a backup and skips itself if the trigger already
 
 The token can only start, re-run or cancel this repo's workflows. It cannot read your secrets or code.
 Revoke it any time on the same GitHub page.
+
+## Dashboard (on your laptop)
+
+Clone this repo once, then from anywhere run:
+
+```bash
+npx --yes github:SuryaSatyaNikhil503/chaijobs#v0.2.0 dashboard --instance path/to/this-repo
+```
+
+Then open `http://127.0.0.1:4567`. Marking a job's status saves it here and pushes it, so the morning email
+won't show that job again. Use `--no-sync` to keep changes on your laptop only.

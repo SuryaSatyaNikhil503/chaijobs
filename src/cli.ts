@@ -6,6 +6,8 @@ import { initInstance, resolveReleaseRef } from "./commands/init.js";
 import { checkProviders } from "./commands/providers.js";
 import { verifyCompanies } from "./commands/verifyCompanies.js";
 import { loadConfig } from "./config/load.js";
+import { startDashboard } from "./dashboard/server.js";
+import { pullInstance } from "./dashboard/sync.js";
 import { defaultDeps, runCycle } from "./pipeline/run.js";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
@@ -73,6 +75,19 @@ program
     const results = await checkProviders(providers, process.env);
     for (const r of results) console.log(`${r.status.padEnd(7)} ${r.provider} (${r.model})  ${r.detail}`);
     if (!results.some((r) => r.status === "ok")) process.exitCode = 1;
+  });
+
+program
+  .command("dashboard")
+  .description("Open your job dashboard on this computer (127.0.0.1 only)")
+  .requiredOption("--instance <dir>", "path to your local clone of your private instance repo")
+  .option("--port <n>", "port to listen on", Number, 4567)
+  .option("--no-sync", "do not pull from or push to the instance repo")
+  .action(async (opts: { instance: string; port: number; sync: boolean }) => {
+    const dir = resolve(opts.instance);
+    if (opts.sync) console.log(pullInstance(dir).note);
+    const { url } = await startDashboard({ instanceDir: dir, port: opts.port, sync: opts.sync });
+    console.log(`chaijobs dashboard: ${url}  (Ctrl+C to stop)`);
   });
 
 await program.parseAsync();

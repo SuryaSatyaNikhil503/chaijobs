@@ -93,6 +93,27 @@ describe("dashboard html", () => {
     expect(html).toContain("3 recorded before titles were kept");
   });
 
+  it("filtered groups use plain language, not rule ids", () => {
+    const html = renderHome(
+      view({
+        filtered: [
+          { rule: "min-years", count: 2, untitled: 0, recent: [] },
+          { rule: "title-excluded", count: 1, untitled: 0, recent: [] },
+        ],
+      }),
+      "t",
+      null,
+      now,
+    );
+    expect(html).toContain("Asks for more experience (2)");
+    expect(html).toContain("Title not a fit (1)");
+    expect(html).not.toContain("title-excluded");
+  });
+
+  it("status label stays for screen readers but is visually hidden", () => {
+    expect(renderHome(view(), "t", null, now)).toMatch(/<label class="sr-only" for="s-j1">Status<\/label>/);
+  });
+
   it("shows the sync note when present", () => {
     expect(renderHome(view(), "t", "saved here, but push failed: offline", now)).toContain(
       "push failed: offline",

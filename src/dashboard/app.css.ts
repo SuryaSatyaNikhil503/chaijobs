@@ -11,6 +11,7 @@ a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{
 .meta{color:var(--muted);margin:0 0 2rem}
 .note{background:var(--surface);border-left:3px solid var(--warn);padding:.5rem .75rem;margin:0 0 1.5rem}
 h2{font-size:1.1rem;margin:2.25rem 0 .5rem}
+.filters{margin-top:2.25rem}
 .jobs{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .job{display:grid;grid-template-columns:1fr auto;gap:.25rem 1rem;padding:1rem 0;border-bottom:1px solid var(--line)}
 .job .title{font-weight:600;font-size:1.05rem}
@@ -25,6 +26,8 @@ details{border-top:1px solid var(--line);padding:.75rem 0}
 summary{cursor:pointer;font-weight:600}
 .plain{list-style:none;padding:0;margin:.5rem 0 0}.plain li{padding:.2rem 0}
 .muted{color:var(--muted)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.job>div{min-width:0;overflow-wrap:anywhere}
 pre.jd{white-space:pre-wrap;word-wrap:break-word;font:inherit;background:var(--surface);border:1px solid var(--line);padding:1rem;border-radius:.3rem}
 dl.facts{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dl.facts dt{color:var(--muted)}dl.facts dd{margin:0}
 @media (max-width:640px){.job{grid-template-columns:1fr}.status{margin-top:.5rem}}
