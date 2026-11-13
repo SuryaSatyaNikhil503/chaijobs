@@ -22,7 +22,9 @@ const HEADERS = {
   "Content-Security-Policy":
     "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
+  // Not "no-referrer": that makes browsers send `Origin: null` on our own form posts, which the CSRF check
+  // (rightly) rejects. "same-origin" still sends nothing to outside sites, e.g. the job postings you open.
+  "Referrer-Policy": "same-origin",
   "Cache-Control": "no-store",
 };
 const MAX_FORM_BYTES = 4_096;

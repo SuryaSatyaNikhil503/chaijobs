@@ -76,6 +76,24 @@ describe("dashboard server", () => {
     expect(await res.text()).toContain("Backend A");
   });
 
+  it("referrer policy lets browsers send the real Origin on form posts (no-referrer makes it null)", async () => {
+    const { url } = await start();
+    expect((await fetch(url)).headers.get("referrer-policy")).toBe("same-origin");
+  });
+
+  it("still rejects a null Origin (sandboxed frames, local files)", async () => {
+    const { url, dir } = await start();
+    const csrf = csrfFrom(await (await fetch(url)).text());
+    const res = await fetch(`${url}/job/a/status`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: "null" },
+      body: form({ csrf, status: "applied" }),
+      redirect: "manual",
+    });
+    expect(res.status).toBe(403);
+    expect(existsSync(join(dir, "data", "user-state.json"))).toBe(false);
+  });
+
   it("rejects a foreign Host header with 421", async () => {
     const { url } = await start();
     const res = await raw(url, { headers: { Host: "evil.example" } });
