@@ -28,6 +28,16 @@ describe("initInstance", () => {
     expect(ref).toBe(SHA);
   });
 
+  it("asks git for the peeled ref so an annotated tag resolves to its commit, not the tag object", () => {
+    const asked: string[][] = [];
+    const ref = resolveReleaseRef("0.1.0", (refs) => {
+      asked.push(refs);
+      return `${"a".repeat(40)}\trefs/tags/v0.1.0\n${SHA}\trefs/tags/v0.1.0^{}\n`;
+    });
+    expect(asked[0]).toEqual(["refs/tags/v0.1.0", "refs/tags/v0.1.0^{}"]);
+    expect(ref).toBe(SHA);
+  });
+
   it("fails clearly when the release tag does not exist", () => {
     expect(() => resolveReleaseRef("9.9.9", () => "")).toThrow(/--ref/);
   });

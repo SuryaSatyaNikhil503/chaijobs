@@ -14,11 +14,15 @@ const PLACEHOLDER = "__CHAIJOBS_REF__";
  */
 export function resolveReleaseRef(
   version: string,
-  lsRemote: (tagRef: string) => string = (tagRef) =>
-    execFileSync("git", ["ls-remote", REPO_URL, tagRef], { encoding: "utf8" }),
+  lsRemote: (refs: string[]) => string = (refs) =>
+    execFileSync("git", ["ls-remote", REPO_URL, ...refs], { encoding: "utf8" }),
 ): string {
   const tagRef = `refs/tags/v${version}`;
-  const lines = lsRemote(tagRef).trim().split("\n").filter(Boolean);
+  // Ask for the peeled ref too: for an annotated tag, "<tag>^{}" is the commit; the bare ref is the tag object.
+  const lines = lsRemote([tagRef, `${tagRef}^{}`])
+    .trim()
+    .split("\n")
+    .filter(Boolean);
   // An annotated tag also lists "<tag>^{}" pointing at the commit; prefer that line.
   const line = lines.find((l) => l.endsWith(`${tagRef}^{}`)) ?? lines.find((l) => l.endsWith(tagRef));
   const sha = line?.split(/\s+/)[0];
