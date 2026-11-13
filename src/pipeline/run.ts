@@ -63,6 +63,17 @@ export interface RunOptions {
   deps?: Partial<RunDeps>;
   /** After this long in LLM extraction, remaining jobs are decided by rules so the digest still goes out. */
   llmBudgetMs?: number;
+  /**
+   * Skip the run when a digest went out less than this many hours ago. Used for GitHub's own (often
+   * hours-late) schedule, which stays as a fallback behind an on-time external trigger.
+   */
+  minGapHours?: number;
+}
+
+export interface RunResult {
+  digest: RenderedDigest | null;
+  sent: boolean;
+  skipped?: string;
 }
 
 const FETCH_CONCURRENCY = 6;
@@ -244,7 +255,7 @@ function commitRun(state: State, shown: Job[], fetched: Fetched, now: Date): voi
   state.imapMaxUid = fetched.imapMaxUid;
 }
 
-export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDigest; sent: boolean }> {
+export async function runCycle(opts: RunOptions): Promise<RunResult> {
   const smtp = opts.dryRun ? null : requireSmtp(opts.env); // fail in seconds, not after the whole run
   const { instanceDir, now } = opts;
   const cfg = loadConfig(instanceDir);
@@ -259,6 +270,16 @@ export async function runCycle(opts: RunOptions): Promise<{ digest: RenderedDige
       withGmailInbox(gmail, (box) => fetchAlerts(cfg.alerts, box, sinceUid, now));
   }
   const state = loadState(instanceDir);
+  if (opts.minGapHours !== undefined && state.lastSuccessfulRun) {
+    const hours = (now.getTime() - Date.parse(state.lastSuccessfulRun)) / 3_600_000;
+    if (hours < opts.minGapHours) {
+      return {
+        digest: null,
+        sent: false,
+        skipped: `a digest was sent ${hours.toFixed(1)}h ago (minimum gap ${opts.minGapHours}h)`,
+      };
+    }
+  }
   const user = loadUserState(instanceDir);
   const cache = new LlmCache(loadLlmCache(instanceDir));
   const win = freshnessWindow(state.lastSuccessfulRun, now, cfg.filters.windowCapHours);

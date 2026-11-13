@@ -225,6 +225,31 @@ describe("runCycle", () => {
     expect(second.sent[0]?.subject).toContain("5 from alerts");
   });
 
+  it("skips when a digest already went out within the minimum gap", async () => {
+    const dir = instance();
+    saveState(
+      dir,
+      { ...emptyState(), lastSuccessfulRun: new Date(now.getTime() - 6 * 3_600_000).toISOString() },
+      now,
+    );
+    const { d, sent } = deps();
+    const r = await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d, minGapHours: 12 });
+    expect(r).toMatchObject({ sent: false, skipped: "a digest was sent 6.0h ago (minimum gap 12h)" });
+    expect(sent).toHaveLength(0);
+  });
+
+  it("runs normally when the last digest is older than the gap", async () => {
+    const dir = instance();
+    saveState(
+      dir,
+      { ...emptyState(), lastSuccessfulRun: new Date(now.getTime() - 20 * 3_600_000).toISOString() },
+      now,
+    );
+    const { d, sent } = deps();
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d, minGapHours: 12 });
+    expect(sent).toHaveLength(1);
+  });
+
   it("one source throws: others still processed and health shows error", async () => {
     const { d, sent } = deps({
       fetchCompany: async (c) => {

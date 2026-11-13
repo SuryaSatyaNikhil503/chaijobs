@@ -67,7 +67,9 @@ jobs:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: node .chaijobs-app/dist/cli.js run --instance .
+        # GitHub's own schedule often fires hours late; when an on-time external trigger already sent
+        # today's digest, the late scheduled run skips instead of sending a second email.
+        run: node .chaijobs-app/dist/cli.js run --instance . ${{ github.event_name == 'schedule' && '--min-gap-hours 12' || '' }}
 
       - name: Save job history
         if: always()

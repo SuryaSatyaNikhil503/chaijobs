@@ -44,6 +44,39 @@ describe("extractJdFacts", () => {
     expect(calls).toEqual(["groq", "groq", "gemini"]);
   });
 
+  it("waits out a per-minute 429 and retries the same provider", async () => {
+    const calls: string[] = [];
+    const waits: number[] = [];
+    let first = true;
+    const call: ChatCall = async (prov) => {
+      calls.push(prov.name);
+      if (first) {
+        first = false;
+        return { status: 429, text: "", retryAfterMs: 7_000 };
+      }
+      return { status: 200, text: good };
+    };
+    const r = await extractJdFacts(JD, chain, env, call, new Set(), async (ms) => {
+      waits.push(ms);
+    });
+    expect(r).toMatchObject({ ok: true, provider: "groq" });
+    expect(calls).toEqual(["groq", "groq"]);
+    expect(waits).toEqual([7_000]);
+  });
+
+  it("a long retry-after (daily quota) blocks the provider and moves on", async () => {
+    const blocked = new Set<string>();
+    const waits: number[] = [];
+    const call: ChatCall = async (prov) =>
+      prov.name === "groq" ? { status: 429, text: "", retryAfterMs: 3_600_000 } : { status: 200, text: good };
+    const r = await extractJdFacts(JD, chain, env, call, blocked, async (ms) => {
+      waits.push(ms);
+    });
+    expect(r).toMatchObject({ ok: true, provider: "gemini" });
+    expect(waits).toEqual([]);
+    expect(blocked.has("groq")).toBe(true);
+  });
+
   it("all 429 returns all-quota", async () => {
     const r = await extractJdFacts("JD", chain, env, async () => ({ status: 429, text: "" }));
     expect(r).toEqual({ ok: false, reason: "all-quota" });

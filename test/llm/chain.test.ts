@@ -5,6 +5,12 @@ afterEach(() => vi.unstubAllGlobals());
 const provider = { name: "p", baseUrl: "https://llm.example/v1", model: "m", apiKeyEnv: "K" };
 
 describe("openAiCompatibleCall", () => {
+  it("reports the provider's retry-after on 429", async () => {
+    vi.stubGlobal("fetch", async () => new Response("", { status: 429, headers: { "retry-after": "7" } }));
+    const r = await openAiCompatibleCall(provider, "key", [{ role: "user", content: "x" }]);
+    expect(r).toEqual({ status: 429, text: "", retryAfterMs: 7_000 });
+  });
+
   it("retries without response_format when the provider rejects it with 400", async () => {
     const bodies: Record<string, unknown>[] = [];
     vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {

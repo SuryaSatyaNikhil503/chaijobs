@@ -82,14 +82,24 @@ export function buildMessages(text: string): ChatMessage[] {
   ];
 }
 
-/** Tries each configured provider in order; 429/5xx/network errors fall through, invalid output retries once. */
+/** A per-minute rate limit is worth waiting out; anything longer means the provider's quota is spent. */
+const MAX_RATE_LIMIT_WAIT_MS = 65_000;
+const MAX_RATE_LIMIT_WAITS = 2;
+const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Tries each configured provider in order. A short 429 (per-minute limit) is waited out using the
+ * provider's Retry-After; a long one, 5xx or a network error blocks that provider for the rest of the
+ * run. Invalid output is retried once, then the next provider is tried.
+ */
 export async function extractJdFacts(
   text: string,
   chain: ProviderEntry[],
   env: Record<string, string | undefined>,
   call: ChatCall = openAiCompatibleCall,
-  /** Providers that failed earlier in this run (429, 5xx, timeout); skipped and added to. */
+  /** Providers that failed earlier in this run; skipped and added to. */
   blocked: Set<string> = new Set(),
+  sleep: (ms: number) => Promise<void> = sleepFor,
 ): Promise<ExtractResult> {
   const configured = chain.filter((p) => env[p.apiKeyEnv]);
   if (configured.length === 0) return { ok: false, reason: "no-providers" };
@@ -99,21 +109,34 @@ export async function extractJdFacts(
   let sawInvalid = false;
   for (const p of usable) {
     const key = env[p.apiKeyEnv] as string;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      let res: { status: number; text: string };
+    let invalid = 0;
+    let waits = 0;
+    while (invalid < 2) {
+      let res: Awaited<ReturnType<ChatCall>>;
       try {
         res = await call(p, key, messages);
       } catch {
         blocked.add(p.name);
         break;
       }
+      if (res.status === 429) {
+        const wait = res.retryAfterMs ?? MAX_RATE_LIMIT_WAIT_MS + 1;
+        if (wait <= MAX_RATE_LIMIT_WAIT_MS && waits < MAX_RATE_LIMIT_WAITS) {
+          waits++;
+          await sleep(wait);
+          continue;
+        }
+        blocked.add(p.name);
+        break;
+      }
       if (res.status < 200 || res.status >= 300) {
-        if (res.status === 429 || res.status >= 500) blocked.add(p.name);
+        if (res.status >= 500) blocked.add(p.name);
         break;
       }
       const facts = parseFacts(res.text);
       if (facts) return { ok: true, facts: groundFacts(facts, text), provider: p.name };
       sawInvalid = true;
+      invalid++;
     }
   }
   return { ok: false, reason: sawInvalid ? "invalid" : "all-quota" };

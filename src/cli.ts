@@ -21,15 +21,22 @@ program
   .description("Run the daily cycle for an instance: fetch, filter, email the digest")
   .requiredOption("--instance <dir>", "path to your private instance folder")
   .option("--dry-run", "print the digest instead of sending it; save nothing", false)
-  .action(async (opts: { instance: string; dryRun: boolean }) => {
-    const { digest, sent } = await runCycle({
+  .option(
+    "--min-gap-hours <n>",
+    "skip if a digest was sent less than n hours ago (for late fallback runs)",
+    Number,
+  )
+  .action(async (opts: { instance: string; dryRun: boolean; minGapHours?: number }) => {
+    const result = await runCycle({
       instanceDir: resolve(opts.instance),
       now: new Date(),
       env: process.env,
       dryRun: opts.dryRun,
+      ...(opts.minGapHours !== undefined ? { minGapHours: opts.minGapHours } : {}),
     });
-    if (opts.dryRun) console.log(digest.text);
-    else console.log(sent ? `Digest sent: ${digest.subject}` : "Digest not sent");
+    if (result.skipped) console.log(`Skipped: ${result.skipped}`);
+    else if (opts.dryRun) console.log(result.digest?.text ?? "");
+    else console.log(result.sent ? `Digest sent: ${result.digest?.subject}` : "Digest not sent");
   });
 program
   .command("init <dir>")
