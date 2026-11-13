@@ -1,6 +1,6 @@
 {
   "name": "chaijobs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Your morning chai and today's jobs: an India-first daily job finder, filter and digest that runs free on GitHub Actions.",
   "license": "MIT",
   "type": "module",
