@@ -25,12 +25,14 @@ API. GitHub's schedule stays as a backup and skips itself if the trigger already
    - **Permissions:** Actions: Read and write. Nothing else.
    - **Expiry:** 1 year.
 2. Set `GITHUB_REPO` in `trigger/wrangler.toml` to `your-username/this-repo`.
+   Then open https://dash.cloudflare.com → **Workers & Pages** once. A new Cloudflare account needs this
+   before cron triggers can be saved.
 3. From `trigger/`, in your own terminal:
 
    ```bash
    npx --yes wrangler@4.156.0 login                  # opens a browser; free Cloudflare account
    npx --yes wrangler@4.156.0 deploy
-   npx --yes wrangler@4.156.0 secret put GITHUB_TOKEN  # paste the token when asked
+   npx --yes wrangler@4.156.0 secret put GITHUB_TOKEN  # type exactly this, then paste the token at the prompt
    ```
 4. **Check it:** the next morning, the Actions tab shows a `workflow_dispatch` run at about 07:07 IST.
 
