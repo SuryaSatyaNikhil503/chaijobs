@@ -40,10 +40,10 @@ describe("state store", () => {
     const d = dir();
     mkdirSync(join(d, "data"), { recursive: true });
     writeFileSync(join(d, "data", "user-state.json"), JSON.stringify({ statuses: { abc: "applied" } }));
-    expect(loadUserState(d)).toEqual({ statuses: { abc: "applied" }, extraCompanies: [] });
+    expect(loadUserState(d)).toEqual({ statuses: { abc: "applied" }, extraCompanies: [], history: [] });
   });
 
   it("missing user-state is empty", () => {
-    expect(loadUserState(dir())).toEqual({ statuses: {}, extraCompanies: [] });
+    expect(loadUserState(dir())).toEqual({ statuses: {}, extraCompanies: [], history: [] });
   });
 });

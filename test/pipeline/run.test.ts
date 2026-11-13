@@ -156,7 +156,7 @@ describe("runCycle", () => {
     );
     const { d } = deps({ fetchCompany: async (c) => (c.slug === "exampleproduct" ? pune : []) });
     await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d });
-    expect(statSync(join(dir, "data", "state.json")).size).toBeLessThan(500_000);
+    expect(statSync(join(dir, "data", "state.json")).size).toBeLessThan(600_000);
   });
 
   it("missing Gmail credentials fail before any fetching", async () => {
@@ -248,6 +248,59 @@ describe("runCycle", () => {
     const { d, sent } = deps();
     await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d, minGapHours: 12 });
     expect(sent).toHaveLength(1);
+  });
+
+  it("skipped jobs keep title and company for the filtered-out log", async () => {
+    const dir = instance();
+    const pune = raw(5, {
+      locations: ["Pune, Maharashtra"],
+      title: "Backend Engineer 5",
+      company: "Example Product Co",
+    });
+    const { d } = deps({ fetchCompany: async (c) => (c.slug === "exampleproduct" ? [pune] : []) });
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d });
+    const rec = Object.values(loadState(dir).seen)[0];
+    expect(rec).toMatchObject({
+      rule: "location",
+      title: "Backend Engineer 5",
+      company: "Example Product Co",
+    });
+  });
+
+  it("an old skipped record without a title gains it when the job is seen again", async () => {
+    const dir = instance();
+    const pune = raw(6, { locations: ["Pune, Maharashtra"], title: "Backend Engineer 6" });
+    const fetchCompany = async (c: { slug: string }) => (c.slug === "exampleproduct" ? [pune] : []);
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: deps({ fetchCompany }).d });
+    const state = loadState(dir);
+    const id = Object.keys(state.seen)[0] as string;
+    state.seen[id] = {
+      firstSeenAt: "2026-11-01T00:00:00.000Z",
+      lastSeenAt: "2026-11-01T00:00:00.000Z",
+      rule: "location",
+    };
+    saveState(dir, state, now);
+    await runCycle({
+      instanceDir: dir,
+      now: new Date(now.getTime() + 86_400_000),
+      env,
+      dryRun: false,
+      deps: deps({ fetchCompany }).d,
+    });
+    expect(loadState(dir).seen[id]).toMatchObject({
+      title: "Backend Engineer 6",
+      firstSeenAt: "2026-11-01T00:00:00.000Z",
+    });
+  });
+
+  it("very long titles are cut so state stays compact", async () => {
+    const dir = instance();
+    const long = raw(7, { locations: ["Pune"], title: "T".repeat(500), company: "C".repeat(500) });
+    const { d } = deps({ fetchCompany: async (c) => (c.slug === "exampleproduct" ? [long] : []) });
+    await runCycle({ instanceDir: dir, now, env, dryRun: false, deps: d });
+    const rec = Object.values(loadState(dir).seen)[0];
+    expect(rec?.title).toHaveLength(120);
+    expect(rec?.company).toHaveLength(80);
   });
 
   it("one source throws: others still processed and health shows error", async () => {

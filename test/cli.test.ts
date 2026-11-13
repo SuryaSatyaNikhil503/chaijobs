@@ -11,4 +11,11 @@ describe("cli", () => {
     const out = execFileSync(process.execPath, ["dist/cli.js", "--version"], { encoding: "utf8" });
     expect(out.trim()).toBe(pkg.version);
   });
+
+  it("dashboard --help lists --instance, --port and --no-sync", () => {
+    const out = execFileSync(process.execPath, ["dist/cli.js", "dashboard", "--help"], { encoding: "utf8" });
+    expect(out).toContain("--instance");
+    expect(out).toContain("--port");
+    expect(out).toContain("--no-sync");
+  });
 });

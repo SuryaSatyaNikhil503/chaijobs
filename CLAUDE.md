@@ -18,6 +18,7 @@ npm run lint           # biome check .
 npm run format         # biome check --write .
 npm run typecheck      # tsc --noEmit
 node dist/cli.js run --instance test/fixtures/instance-min --dry-run   # full cycle, no send, no save
+node dist/cli.js dashboard --instance <clone of your instance repo>   # local dashboard on 127.0.0.1:4567
 ```
 
 Before you say a change is done: `npm run lint && npm run typecheck && npm run build && npm test`.
@@ -37,19 +38,20 @@ CI runs the same on Ubuntu and Windows, plus a fresh-install smoke test (`npm pa
 
 ## Module map
 
-| Path                  | Responsibility                                                                                      |
-| --------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/core/types.ts`   | `RawJob`, `Job`, `Verdict`, `RuleId`, shared types                                                  |
-| `src/config/`         | zod schemas and `loadConfig(instanceDir)` for `config/*.yml`                                        |
-| `src/sources/`        | one adapter per source, returning `RawJob[]`; `http.ts` has `fetchJson` and `SourceError`           |
-| `src/sources/alerts/` | IMAP fetch plus one parser per alert sender (LinkedIn, Naukri, Indeed)                              |
-| `src/pipeline/`       | `normalise.ts` (identity, dedupe) and `run.ts` (the whole cycle)                                    |
-| `src/filter/`         | `location.ts`, `freshness.ts`, `cheap.ts` (no LLM), `decide.ts` (rules on extracted facts, ranking) |
-| `src/llm/`            | OpenAI-compatible provider fallback chain, JD fact extraction, cache                                |
-| `src/state/`          | `data/state.json` (cloud-owned) and `data/user-state.json` (laptop-owned, read-only here)           |
-| `src/digest/`         | render (HTML + text) and send (Gmail SMTP to self)                                                  |
-| `src/commands/`       | `init`, `companies verify`                                                                          |
-| `template/instance/`  | what `chaijobs init` copies: the daily workflow and example config                                  |
+| Path                  | Responsibility                                                                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/core/types.ts`   | `RawJob`, `Job`, `Verdict`, `RuleId`, shared types                                                                                               |
+| `src/config/`         | zod schemas and `loadConfig(instanceDir)` for `config/*.yml`                                                                                     |
+| `src/sources/`        | one adapter per source, returning `RawJob[]`; `http.ts` has `fetchJson` and `SourceError`                                                        |
+| `src/sources/alerts/` | IMAP fetch plus one parser per alert sender (LinkedIn, Naukri, Indeed)                                                                           |
+| `src/pipeline/`       | `normalise.ts` (identity, dedupe) and `run.ts` (the whole cycle)                                                                                 |
+| `src/filter/`         | `location.ts`, `freshness.ts`, `cheap.ts` (no LLM), `decide.ts` (rules on extracted facts, ranking)                                              |
+| `src/llm/`            | OpenAI-compatible provider fallback chain, JD fact extraction, cache                                                                             |
+| `src/state/`          | `data/state.json` (cloud-owned) and `data/user-state.json` (laptop-owned, read-only here)                                                        |
+| `src/digest/`         | render (HTML + text) and send (Gmail SMTP to self)                                                                                               |
+| `src/commands/`       | `init`, `companies verify`                                                                                                                       |
+| `src/dashboard/`      | local dashboard: `model.ts` (view), `html.ts` (pages), `server.ts` (127.0.0.1, CSRF, Host check), `sync.ts` (git pull/push of `user-state.json`) |
+| `template/instance/`  | what `chaijobs init` copies: the daily workflow and example config                                                                               |
 
 ## Architecture rules (do not break)
 
@@ -72,7 +74,7 @@ CI runs the same on Ubuntu and Windows, plus a fresh-install smoke test (`npm pa
     - Install with `npm ci --ignore-scripts` in a step that has **no secrets**.
     - Only the run step gets secrets.
 11. **Compact state:** keep full records only for matches and stubs. Skipped jobs go in the compact `seen` map.
-    Write one record per line. A real run must leave `state.json` around 1 MB, not tens of MB.
+    Write one record per line. A real run leaves `state.json` around 2 MB (measured 1.8 MB with titles), never tens of MB.
 12. **LLM output is untrusted:** `groundFacts` keeps only skills and emails that appear in the JD text.
     A years figure stated in the text overrides the model's.
 
