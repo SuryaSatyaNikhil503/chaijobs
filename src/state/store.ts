@@ -45,10 +45,20 @@ export interface State {
   digestedKeys: Record<string, string>;
 }
 
-/** Written by the laptop app (Plan 3); the cloud cycle only reads it. */
+export const JOB_STATUSES = ["applied", "skipped", "interview", "rejected", "offer", "withdrawn"] as const;
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+export interface StatusEvent {
+  id: string;
+  status: JobStatus;
+  at: string;
+}
+
+/** Written by the laptop app (the dashboard); the cloud cycle only reads it. */
 export interface UserState {
   statuses: Record<string, string>;
   extraCompanies: Company[];
+  history: StatusEvent[];
 }
 
 const PRUNE_DAYS = 30;
@@ -69,7 +79,7 @@ function readJson(path: string): unknown {
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined;
 }
 
-function writeAtomic(path: string, text: string): void {
+export function writeAtomic(path: string, text: string): void {
   mkdirSync(join(path, ".."), { recursive: true });
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, text);
@@ -77,7 +87,7 @@ function writeAtomic(path: string, text: string): void {
 }
 
 /** One entry per line: small daily diffs, so git history grows by what changed, not by the whole file. */
-function linesObject(obj: Record<string, unknown>): string {
+export function linesObject(obj: Record<string, unknown>): string {
   const entries = Object.entries(obj);
   if (entries.length === 0) return "{}";
   return `{\n${entries.map(([k, v]) => `    ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(",\n")}\n  }`;
@@ -138,6 +148,7 @@ export function saveState(dir: string, s: State, now: Date = new Date()): void {
 const UserStateSchema = z.object({
   statuses: z.record(z.string(), z.string()).default({}),
   extraCompanies: z.array(CompanySchema).default([]),
+  history: z.array(z.object({ id: z.string(), status: z.enum(JOB_STATUSES), at: z.string() })).default([]),
 });
 
 export function loadUserState(dir: string): UserState {
