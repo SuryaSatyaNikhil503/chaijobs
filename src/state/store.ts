@@ -20,7 +20,13 @@ export interface SeenRecord {
   firstSeenAt: string;
   lastSeenAt: string;
   rule: RuleId;
+  /** For the dashboard's filtered-out log. Optional: records written before 2026-11-13 have none. */
+  title?: string;
+  company?: string;
 }
+
+export const SEEN_TITLE_MAX = 120;
+export const SEEN_COMPANY_MAX = 80;
 
 export interface SourceHealth {
   source: string;

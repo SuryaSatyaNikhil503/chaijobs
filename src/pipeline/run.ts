@@ -24,6 +24,8 @@ import {
   loadLlmCache,
   loadState,
   loadUserState,
+  SEEN_COMPANY_MAX,
+  SEEN_TITLE_MAX,
   type SourceHealth,
   type State,
   saveLlmCache,
@@ -224,7 +226,14 @@ async function judgeJobs(jobs: Job[], ctx: JudgeContext, opts: RunOptions, deps:
     if (verdict.kind === "skip") {
       count(verdict.rule);
       delete state.jobs[job.id];
-      state.seen[job.id] = { firstSeenAt: job.firstSeenAt, lastSeenAt: nowIso, rule: verdict.rule };
+      // Rewritten on every sighting, so records from before titles were kept heal themselves.
+      state.seen[job.id] = {
+        firstSeenAt: job.firstSeenAt,
+        lastSeenAt: nowIso,
+        rule: verdict.rule,
+        title: job.title.slice(0, SEEN_TITLE_MAX),
+        company: job.company.slice(0, SEEN_COMPANY_MAX),
+      };
       continue;
     }
     delete state.seen[job.id];

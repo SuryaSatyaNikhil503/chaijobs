@@ -72,7 +72,7 @@ CI runs the same on Ubuntu and Windows, plus a fresh-install smoke test (`npm pa
     - Install with `npm ci --ignore-scripts` in a step that has **no secrets**.
     - Only the run step gets secrets.
 11. **Compact state:** keep full records only for matches and stubs. Skipped jobs go in the compact `seen` map.
-    Write one record per line. A real run must leave `state.json` around 1 MB, not tens of MB.
+    Write one record per line. A real run leaves `state.json` around 2 MB (measured 1.8 MB with titles), never tens of MB.
 12. **LLM output is untrusted:** `groundFacts` keeps only skills and emails that appear in the JD text.
     A years figure stated in the text overrides the model's.
 
